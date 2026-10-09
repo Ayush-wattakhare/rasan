@@ -69,41 +69,38 @@ export default async function CustomerDashboard() {
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">
-      {/* Premium Dashboard Header */}
-      <div className="relative overflow-hidden bg-[#1A1A1A] py-16 md:py-24 lg:py-32">
+      {/* Sleek Dashboard Header - Compact half-screen height */}
+      <div className="relative overflow-hidden bg-[#1A1A1A] py-8 md:py-12 lg:py-14">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-orange-500/10 rounded-full blur-[120px] -mr-64 -mt-64 animate-pulse"></div>
         <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-red-500/5 rounded-full blur-[80px] -ml-32 -mb-32"></div>
         
         <div className="container mx-auto px-4 relative z-10">
-          <div className="max-w-4xl space-y-8">
-             <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                <span className="text-xl">👋</span>
-                <span className="text-[0.7rem] font-black text-white uppercase tracking-[0.3em] italic">
+          <div className="max-w-3xl space-y-4">
+             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+                <span className="text-base">👋</span>
+                <span className="text-[0.65rem] font-black text-white uppercase tracking-[0.25em] italic">
                   Systems Online: {profile?.email?.split('@')[0] || 'Gourmet'}
                 </span>
              </div>
 
-             <div className="space-y-4">
-               <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter leading-[0.85] uppercase italic">
-                 REDEFINE <br />
-                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-600">
-                   DAILY TASTE
-                 </span>
+             <div className="space-y-2">
+               <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-white tracking-tighter leading-none uppercase italic">
+                 REDEFINE <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-600">DAILY TASTE</span>
                </h1>
-               <p className="text-xl text-gray-400 max-w-2xl font-medium leading-relaxed">
+               <p className="text-xs md:text-sm text-gray-400 max-w-xl font-medium leading-relaxed">
                  High-performance home cooking delivered with hyperlocal precision.
                </p>
              </div>
 
-             <div className="flex flex-wrap gap-4 pt-4">
+             <div className="flex flex-wrap gap-3 pt-2">
                 <Link href="/subscriptions">
-                    <Button size="lg" className="bg-orange-600 hover:bg-[#FDFCFB] hover:text-[#1A1A1A] text-white font-black uppercase tracking-[0.2em] px-10 h-16 rounded-2xl shadow-2xl transition-all duration-500 border-none group">
+                    <Button size="default" className="bg-orange-600 hover:bg-[#FDFCFB] hover:text-[#1A1A1A] text-white font-black uppercase tracking-[0.15em] px-6 h-11 md:h-12 rounded-xl shadow-lg transition-all duration-300 border-none group cursor-pointer text-xs">
                         Unlock Premium Plans
-                        <Sparkles className="ml-2 w-5 h-5 group-hover:rotate-45 transition-transform" />
+                        <Sparkles className="ml-1.5 w-4 h-4 group-hover:rotate-45 transition-transform" />
                     </Button>
                 </Link>
                 <Link href="/meals">
-                    <Button variant="outline" size="lg" className="bg-transparent border-white/20 text-white hover:bg-white/5 font-black uppercase tracking-[0.2em] px-10 h-16 rounded-2xl transition-all duration-500">
+                    <Button variant="outline" size="default" className="bg-transparent border-white/20 text-white hover:bg-white/5 font-black uppercase tracking-[0.15em] px-6 h-11 md:h-12 rounded-xl transition-all duration-300 text-xs cursor-pointer">
                         Explore Recipes
                     </Button>
                 </Link>
@@ -112,7 +109,7 @@ export default async function CustomerDashboard() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8 max-w-7xl -mt-12 relative z-20 space-y-12">
+      <div className="container mx-auto px-4 py-6 md:py-8 max-w-7xl -mt-6 md:-mt-8 relative z-20 space-y-10">
         {/* Unified Search Experience */}
         <CustomerSearch />
 
