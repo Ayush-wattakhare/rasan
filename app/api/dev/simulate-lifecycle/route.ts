@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { devToolsGuard } from '@/lib/dev-tools';
 import { RASAN_COMMISSION_PERCENTAGE } from '@/lib/utils/constants';
+
+async function guardSimulator() {
+  const disabled = devToolsGuard();
+  if (disabled) return disabled;
+  const auth = await requireAdmin();
+  return auth.ok ? null : auth.response;
+}
 
 // In-memory simulation state store
 let CURRENT_SIMULATION: any = null;
 
 export async function GET() {
+  const blocked = await guardSimulator();
+  if (blocked) return blocked;
+
   if (!CURRENT_SIMULATION) {
     return NextResponse.json({
       active: false,
@@ -19,11 +30,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = await guardSimulator();
+  if (blocked) return blocked;
+
   try {
     const body = await request.json();
     const { action, step, customPin } = body;
 
-    const serviceClient = createServiceClient();
 
     switch (action) {
       case 'start_or_reset': {

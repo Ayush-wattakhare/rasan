@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-function DemoUsersButton() {
+function DemoUsersButton({ setupSecret }: { setupSecret: string }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
 
@@ -14,7 +14,10 @@ function DemoUsersButton() {
     setLoading(true);
     setResult('');
     try {
-      const res = await fetch('/api/admin/create-demo-users', { method: 'POST' });
+      const res = await fetch('/api/admin/create-demo-users', {
+        method: 'POST',
+        headers: { 'x-admin-secret': setupSecret },
+      });
       const data = await res.json();
       if (res.ok) {
         const created = data.results?.map((r: any) => `${r.email}: ${r.status}`).join(', ');
@@ -41,10 +44,11 @@ function DemoUsersButton() {
 
 export default function AdminSetupPage() {
   const [formData, setFormData] = useState({
-    name: 'Admin User',
-    email: 'admin@rasan.com',
-    password: 'admin123',
+    name: '',
+    email: '',
+    password: '',
   });
+  const [setupSecret, setSetupSecret] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -60,6 +64,7 @@ export default function AdminSetupPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-admin-secret': setupSecret,
         },
         body: JSON.stringify(formData),
       });
@@ -137,6 +142,18 @@ export default function AdminSetupPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="setupSecret">Setup Secret</Label>
+              <Input
+                id="setupSecret"
+                type="password"
+                value={setupSecret}
+                onChange={(e) => setSetupSecret(e.target.value)}
+                placeholder="Value of ADMIN_SETUP_SECRET"
+                required
+              />
+            </div>
+
             <Button 
               type="submit" 
               className="w-full"
@@ -145,16 +162,6 @@ export default function AdminSetupPage() {
               {loading ? 'Creating Admin...' : 'Create Admin User'}
             </Button>
 
-            <div className="mt-4 p-4 bg-blue-50 rounded-md">
-              <h3 className="font-semibold text-blue-900 mb-2">Default Admin Credentials:</h3>
-              <div className="text-sm text-blue-800 space-y-1">
-                <div><strong>Email:</strong> admin@rasan.com</div>
-                <div><strong>Password:</strong> admin123</div>
-              </div>
-              <p className="text-xs text-blue-600 mt-2">
-                You can change these credentials above before creating the account.
-              </p>
-            </div>
           </CardContent>
         </form>
 
@@ -163,7 +170,7 @@ export default function AdminSetupPage() {
           <p className="text-xs text-gray-500 mb-3">
             Creates <code>customer@rasan.com</code> (customer123) and <code>delivery@rasan.com</code> (delivery123) for testing.
           </p>
-          <DemoUsersButton />
+          <DemoUsersButton setupSecret={setupSecret} />
         </CardContent>
       </Card>
     </div>
