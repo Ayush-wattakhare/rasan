@@ -7,7 +7,7 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import BottomBar from '@/components/layout/bottom-bar';
 import FloatingGetStarted from '@/components/floating-get-started';
-import PersonaSwitcherDock from '@/components/dev/persona-switcher-dock';
+
 
 const inter = Inter({
   subsets: ['latin'],
@@ -72,7 +72,7 @@ export default async function RootLayout({
               <Footer />
               {profile && <BottomBar userRole={profile.role} />}
               {!profile && <FloatingGetStarted />}
-              <PersonaSwitcherDock currentRole={profile?.role} currentEmail={profile?.email} />
+
             </div>
           </ToastProvider>
         </CartProvider>
