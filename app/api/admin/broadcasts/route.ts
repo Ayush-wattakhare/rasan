@@ -11,7 +11,7 @@ export interface BroadcastMessage {
   reach_count: number;
 }
 
-let MEMORY_BROADCASTS: BroadcastMessage[] = [
+const MEMORY_BROADCASTS: BroadcastMessage[] = [
   {
     id: 'b-1',
     title: '🌧️ Heavy Rain Alert in Pune Cluster',

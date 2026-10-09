@@ -19,7 +19,7 @@ export async function GET() {
     const serviceClient = createServiceClient();
 
     // Check existing vendor record
-    let { data: vendors, error: vendorError } = await serviceClient
+    const { data: vendors, error: vendorError } = await serviceClient
       .from('vendors')
       .select('*')
       .eq('user_id', user.id);

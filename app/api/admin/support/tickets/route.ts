@@ -32,7 +32,7 @@ export interface SupportTicket {
 }
 
 // In-memory persistent fallback if tickets table is not created in Supabase yet
-let MEMORY_TICKETS: SupportTicket[] = [
+const MEMORY_TICKETS: SupportTicket[] = [
   {
     id: 't-001',
     ticket_number: 'TCK-9841',
