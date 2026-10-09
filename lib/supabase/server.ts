@@ -9,10 +9,12 @@ import type { Database } from '@/types/database.types';
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
   return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {
@@ -31,12 +33,12 @@ export async function createClient() {
         },
       },
       global: {
-        fetch: (url, options = {}) => {
+        fetch: (fetchUrl, options = {}) => {
           const timeoutSignal = AbortSignal.timeout(2500);
           const signal = options.signal
             ? AbortSignal.any([options.signal, timeoutSignal])
             : timeoutSignal;
-          return fetch(url, {
+          return fetch(fetchUrl, {
             ...options,
             signal,
           });
@@ -50,9 +52,12 @@ export async function createClient() {
  * Creates a Supabase client for static generation (no cookies)
  */
 export function createStaticClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
   return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    url,
+    anonKey
   );
 }
 
@@ -61,9 +66,12 @@ export function createStaticClient() {
  * This client bypasses RLS policies and should only be used in secure server contexts
  */
 export function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
+
   return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    url,
+    serviceKey,
     {
       auth: {
         autoRefreshToken: false,

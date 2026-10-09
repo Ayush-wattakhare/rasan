@@ -14,23 +14,37 @@ export const revalidate = 60;
 
 // Generate static params for popular meals
 export async function generateStaticParams() {
-  const supabase = createStaticClient();
-  
-  const { data: meals } = await supabase
-    .from('meals')
-    .select('id')
-    .eq('is_available', true)
-    .order('rating', { ascending: false })
-    .limit(20);
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url || url.includes('placeholder')) {
+    return [];
+  }
 
-  return meals?.map((meal) => ({ id: meal.id })) || [];
+  try {
+    const supabase = createStaticClient();
+    
+    const { data: meals } = await supabase
+      .from('meals')
+      .select('id')
+      .eq('is_available', true)
+      .order('rating', { ascending: false })
+      .limit(20);
+
+    return meals?.map((meal) => ({ id: meal.id })) || [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function PublicMealDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const supabase = createStaticClient();
+  let meal = null;
 
-  const meal = await getMealById(supabase, id);
+  try {
+    const supabase = createStaticClient();
+    meal = await getMealById(supabase, id);
+  } catch {
+    meal = null;
+  }
 
   if (!meal || !meal.is_available) {
     notFound();
