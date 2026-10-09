@@ -50,12 +50,12 @@ export default function AdminDashboardActions() {
         ['4d5e6f', new Date().toISOString(), 'LEDGER_EXPORT', 'SUCCESS', '0']
       ];
       
-      let csvContent = "data:text/csv;charset=utf-8," 
+      const csvContent = "data:text/csv;charset=utf-8," 
         + headers.join(",") + "\n"
         + data.map(e => e.join(",")).join("\n");
         
-      var encodedUri = encodeURI(csvContent);
-      var link = document.createElement("a");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
       link.setAttribute("download", "nexus_ledger_export.csv");
       document.body.appendChild(link); // Required for FF

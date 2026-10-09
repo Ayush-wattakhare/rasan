@@ -16,11 +16,13 @@ export async function GET(request: NextRequest) {
     const serviceClient = createServiceClient();
 
     // 1. Fetch vendor record for this authenticated user
-    let { data: vendor, error: vendorErr } = await serviceClient
+    const { data: initialVendor } = await serviceClient
       .from('vendors')
       .select('id, business_name, cuisine, rating, user_id')
       .eq('user_id', user.id)
       .maybeSingle();
+
+    let vendor = initialVendor;
 
     if (!vendor) {
       // Fallback: Check if user has vendor role and link to primary active vendor
@@ -88,7 +90,7 @@ export async function GET(request: NextRequest) {
     const customerIds = (subscribers || [])
       .map((s) => s.customer_id)
       .filter((id) => id && !id.startsWith('sample_'));
-    let customerProfiles: Record<string, any> = {};
+    const customerProfiles: Record<string, any> = {};
 
     if (customerIds.length > 0) {
       const { data: profiles } = await serviceClient
@@ -217,11 +219,13 @@ export async function POST(request: NextRequest) {
     const serviceClient = createServiceClient();
 
     // Verify vendor
-    let { data: vendor, error: vendorErr } = await serviceClient
+    const { data: initialVendor } = await serviceClient
       .from('vendors')
       .select('id, business_name')
       .eq('user_id', user.id)
       .maybeSingle();
+
+    let vendor = initialVendor;
 
     if (!vendor) {
       const { data: fallbackVendor } = await serviceClient

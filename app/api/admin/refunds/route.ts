@@ -16,7 +16,7 @@ export interface RefundRecord {
   processed_at: string;
 }
 
-let MEMORY_REFUNDS: RefundRecord[] = [
+const MEMORY_REFUNDS: RefundRecord[] = [
   {
     id: 'ref-1',
     reference_id: 'REF-20260901-8411',

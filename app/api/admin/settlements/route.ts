@@ -20,7 +20,7 @@ export interface SettlementRecord {
   notes?: string;
 }
 
-let MEMORY_SETTLEMENTS: SettlementRecord[] = [
+const MEMORY_SETTLEMENTS: SettlementRecord[] = [
   {
     id: 'stl-1',
     utr_number: 'UTR-20261008-84291',
