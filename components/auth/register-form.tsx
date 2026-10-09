@@ -90,7 +90,7 @@ export function RegisterForm() {
       const supabase = createClient();
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email, password,
-        options: { data: { name, phone, role } },
+        options: { data: { name, phone } },
       });
       if (signUpError) { setError(signUpError.message); setLoading(false); return; }
       if (authData.user) {

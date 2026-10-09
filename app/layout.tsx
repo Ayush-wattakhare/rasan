@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { isUserRole, roleFromAppMetadata } from '@/lib/auth/roles';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import BottomBar from '@/components/layout/bottom-bar';
@@ -45,10 +46,20 @@ export default async function RootLayout({
       } = await supabase.auth.getUser();
 
       if (user) {
+        // Role from app_metadata (not user-editable), else from profiles.
+        let role = roleFromAppMetadata(user);
+        if (!role) {
+          const { data: row } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+          role = isUserRole(row?.role) ? row.role : null;
+        }
         profile = {
           id: user.id,
           email: user.email || '',
-          role: (user.user_metadata?.role || user.app_metadata?.role || 'customer') as any,
+          role: role ?? 'customer',
         };
       }
     } catch {
