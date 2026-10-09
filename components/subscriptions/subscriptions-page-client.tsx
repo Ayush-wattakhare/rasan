@@ -27,10 +27,10 @@ export default function SubscriptionsPageClient({
     setIsDialogOpen(true);
   };
 
-  const hasActiveSubscriptions = subscriptions && subscriptions.some((s) => s.status === 'active');
-  const activeSub = (subscriptions || []).find((s) => s.status === 'active') || (subscriptions || [])[0];
-  const activeVendorId = activeSub?.vendors?.id || activeSub?.vendor_id || vendors?.[0]?.id;
-  const activeVendorName = activeSub?.vendors?.business_name || vendors?.[0]?.business_name || 'Home Kitchen';
+  const hasActiveSubscriptions = Boolean(subscriptions && subscriptions.some((s) => s.status === 'active'));
+  const activeSub = hasActiveSubscriptions ? (subscriptions || []).find((s) => s.status === 'active') : null;
+  const activeVendorId = activeSub?.vendors?.id || activeSub?.vendor_id || null;
+  const activeVendorName = activeSub?.vendors?.business_name || 'Home Kitchen';
 
   return (
     <div className="container mx-auto p-4 md:p-6 pb-24">
@@ -59,13 +59,6 @@ export default function SubscriptionsPageClient({
       {/* Main Content */}
       {!subscriptions || subscriptions.length === 0 ? (
         <div className="space-y-12">
-          {activeVendorId && (
-            <EmbeddedKitchenCircle
-              vendorId={activeVendorId}
-              vendorName={activeVendorName}
-              isActiveSubscriber={false}
-            />
-          )}
           <div className="bg-orange-50/50 rounded-[3rem] p-4 border border-orange-100 overflow-hidden shadow-sm">
             <TiffinSubscription onSelectPlan={handleSelectPlan} />
           </div>
@@ -146,13 +139,13 @@ export default function SubscriptionsPageClient({
           {/* Active Subscriptions Cards */}
           <SubscriptionList subscriptions={subscriptions} />
 
-          {/* Dedicated Embedded Kitchen Circle & Broadcast Feed */}
-          {activeVendorId && (
+          {/* Dedicated Embedded Kitchen Circle & Broadcast Feed - Active Subscribers Only */}
+          {hasActiveSubscriptions && activeVendorId && (
             <div className="pt-4">
               <EmbeddedKitchenCircle
                 vendorId={activeVendorId}
                 vendorName={activeVendorName}
-                isActiveSubscriber={hasActiveSubscriptions}
+                isActiveSubscriber={true}
               />
             </div>
           )}

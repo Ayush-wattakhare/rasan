@@ -62,8 +62,10 @@ export default async function CustomerDashboard() {
     .order('rating', { ascending: false })
     .limit(8);
 
-  const activeVendorId = customerSub?.vendors?.id || customerSub?.vendor_id || topMeals?.[0]?.vendors?.id;
-  const activeVendorName = customerSub?.vendors?.business_name || topMeals?.[0]?.vendors?.business_name || 'Home Kitchen';
+  // Only active subscribers of a weekly/monthly tiffin plan get access to Kitchen Circle & Tomorrow's Menu
+  const hasActiveSubscription = !!customerSub && customerSub.status === 'active';
+  const activeVendorId = hasActiveSubscription ? (customerSub?.vendors?.id || customerSub?.vendor_id) : null;
+  const activeVendorName = customerSub?.vendors?.business_name || 'Your Chef';
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">
@@ -114,12 +116,12 @@ export default async function CustomerDashboard() {
         {/* Unified Search Experience */}
         <CustomerSearch />
 
-        {/* Live Kitchen Circle & Tomorrow's Menu Broadcast Hub */}
-        {activeVendorId && (
+        {/* Live Kitchen Circle & Tomorrow's Menu Broadcast Hub - Exclusively for Active Subscribers */}
+        {hasActiveSubscription && activeVendorId && (
           <EmbeddedKitchenCircle
             vendorId={activeVendorId}
             vendorName={activeVendorName}
-            isActiveSubscriber={!!customerSub}
+            isActiveSubscriber={true}
           />
         )}
 
