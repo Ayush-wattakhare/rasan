@@ -242,6 +242,8 @@ export interface Database {
           actual_delivery_time: string | null;
           tracking_updates: TrackingUpdate[];
           rating: OrderRating | null;
+          payment_order_id: string | null;
+          compensated_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -267,6 +269,8 @@ export interface Database {
           actual_delivery_time?: string | null;
           tracking_updates?: TrackingUpdate[];
           rating?: OrderRating | null;
+          payment_order_id?: string | null;
+          compensated_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -292,6 +296,8 @@ export interface Database {
           actual_delivery_time?: string | null;
           tracking_updates?: TrackingUpdate[];
           rating?: OrderRating | null;
+          payment_order_id?: string | null;
+          compensated_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -663,11 +669,53 @@ export interface Database {
         };
         Relationships: [];
       };
+      payouts: {
+        Row: {
+          id: string;
+          user_id: string;
+          payee_type: 'vendor' | 'delivery';
+          amount: number;
+          method: 'upi' | 'bank';
+          destination: Record<string, unknown>;
+          status: 'pending' | 'processing' | 'completed' | 'rejected';
+          reference: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          payee_type: 'vendor' | 'delivery';
+          amount: number;
+          method: 'upi' | 'bank';
+          destination?: Record<string, unknown>;
+          status?: 'pending' | 'processing' | 'completed' | 'rejected';
+          reference: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: 'pending' | 'processing' | 'completed' | 'rejected';
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      request_payout: {
+        Args: {
+          p_user_id: string;
+          p_payee_type: 'vendor' | 'delivery';
+          p_amount: number;
+          p_method: 'upi' | 'bank';
+          p_destination: Record<string, unknown>;
+          p_commission_rate: number;
+        };
+        Returns: Database['public']['Tables']['payouts']['Row'];
+      };
       nearby_vendors: {
         Args: {
           lat: number;

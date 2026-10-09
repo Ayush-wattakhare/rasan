@@ -90,9 +90,9 @@ Common themes:
 | 3 | `fix(auth): stop trusting user_metadata role, secure profile creation and callback` | B1–B5, H1 |
 | 4 | `chore(dev): remove debug/fix routes and lock dev tools` | C1–C7 |
 | 5 | `fix(admin): require admin on all admin routes` | D1–D4 |
-| 6 | `fix(orders): server-side pricing, status authz, payment verification` | E1–E9 |
-| 7 | `fix(delivery): enforce assignment, OTP and payout balance checks` | F1–F6 |
-| 8 | `fix(vendor): enforce ownership on orders, broadcasts, meals, payouts, reviews, subscriptions, uploads` | G1–G11 |
+| 6 | `fix(orders): server-side pricing, status authz, payment verification` | E1–E9, I1 |
+| 7 | `fix(delivery): enforce assignment, OTP and payout balance checks` | F1–F6, I2 |
+| 8 | `fix(vendor): enforce ownership on orders, broadcasts, meals, payouts, reviews, subscriptions, uploads` | G1–G11, I3–I6 |
 | 9 | `test: cover guards, redirects, transitions and pricing` | regression tests |
 | 10 | `docs: reorganise docs into docs/, remove stale reports, fix facts` | H2 |
 | 11 | `docs(audit): final progress update` | — |

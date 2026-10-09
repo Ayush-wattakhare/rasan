@@ -33,6 +33,7 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
 | F. Delivery | F1–F6 | ⬜ |
 | G. Vendor etc. | G1–G11 | ⬜ |
 | H. Consistency & docs | H1–H2 | ⬜ |
+| I. Pages / browser bypass | I1–I6 | ⬜ |
 
 ## Verification log
 
