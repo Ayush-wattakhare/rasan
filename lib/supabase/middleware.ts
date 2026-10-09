@@ -33,45 +33,49 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/refund-policy') ||
     pathname.startsWith('/cookie-policy');
 
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value);
-          });
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
-          });
-        },
-      },
-      global: {
-        fetch: (url, options = {}) => {
-          const timeoutSignal = AbortSignal.timeout(2000);
-          const signal = options.signal
-            ? AbortSignal.any([options.signal, timeoutSignal])
-            : timeoutSignal;
-          return fetch(url, {
-            ...options,
-            signal,
-          });
-        },
-      },
-    }
-  );
-
-  // Fast-path: Skip auth checks on public pages & static assets
+  // Immediately exit on public pages without running auth checks
   if (isPublicPage) {
     return supabaseResponse;
   }
+
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+    const supabase = createServerClient<Database>(
+      url,
+      anonKey,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => {
+              request.cookies.set(name, value);
+            });
+            supabaseResponse = NextResponse.next({
+              request,
+            });
+            cookiesToSet.forEach(({ name, value, options }) => {
+              supabaseResponse.cookies.set(name, value, options);
+            });
+          },
+        },
+        global: {
+          fetch: (fetchUrl, options = {}) => {
+            const timeoutSignal = AbortSignal.timeout(2000);
+            const signal = options.signal
+              ? AbortSignal.any([options.signal, timeoutSignal])
+              : timeoutSignal;
+            return fetch(fetchUrl, {
+              ...options,
+              signal,
+            });
+          },
+        },
+      }
+    );
 
   // Protected routes configuration - Require login for meals/menu and cart
   const protectedRoutes = {
@@ -205,4 +209,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   return supabaseResponse;
+} catch (error) {
+  console.error('Middleware updateSession caught error:', error);
+  return supabaseResponse;
+}
 }
