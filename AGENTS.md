@@ -153,6 +153,28 @@ When instructions conflict, prioritize:
 
 Do not introduce major architectural changes or unrelated features without a clear requirement.
 
+## 15. Platform-Specific Engineering Standards
+
+### Windows & PowerShell Execution
+- Always use valid PowerShell syntax on Windows: use `;` instead of `&&` for command sequencing.
+- Use PowerShell environment variable syntax (`$env:VAR="value"`) instead of Linux `export`.
+- Use native PowerShell commands or flags when executing terminal operations.
+
+### UI/UX, Viewport & Design Aesthetics
+- Above-The-Fold Priority: Never create oversized hero sections that push core features (meals, products, lists) below the fold. Keep headers compact (< 25% screen height).
+- Floating Nav Protection: Always provide sufficient bottom padding (`pb-28` to `pb-32`) on scrollable layouts so floating bottom navigation docks never obstruct buttons, cards, or footer content.
+- Domain Aesthetics: Match visual themes to the product domain (e.g., food delivery platforms must look warm, appetizing, and inviting—avoid cold terminal or dark developer looks for end-user views).
+
+### Database & Supabase Conventions
+- Never disable Row Level Security (RLS) to bypass permission checks; always write or refine the appropriate RLS policy.
+- Test queries for both authenticated and anonymous roles.
+- Never run destructive migrations (dropping tables, deleting user records) without explicit instruction.
+
+### Next.js 16 & React 19 Architecture
+- In App Router pages and route handlers, treat `params` and `searchParams` as Promises (`await params`, `await searchParams`).
+- Use React 19 and `@supabase/ssr` patterns; do not use deprecated `auth-helpers-nextjs`.
+- Provide safe mock or fallback environment variable handling so static builds (`next build`) succeed even during prerendering without active credentials.
+
 ---
 
 # Documentation, Plans & Change History Guidelines
