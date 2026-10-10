@@ -15,7 +15,7 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
 | 4 | Remove debug routes, lock dev tools | ✅ | Deleted 9 API routes, 7 debug pages, `scratch/`, dead components. `vendor/check-status` kept as read-only. Seeding / demo users / simulator / admin setup now need `ENABLE_DEV_TOOLS` (+ admin or `ADMIN_SETUP_SECRET`). Login form no longer auto-creates demo users. |
 | 5 | Admin route checks | ✅ | All 14 admin routes now guarded (12 `requireAdmin` / profiles role, 2 setup-secret). Broadcast target and role values validated; admins can't drop their own admin role. Admin user actions go through the API. |
 | 6 | Orders & payments | ✅ | New `POST /api/orders` prices orders from DB meals (shared `lib/pricing`); checkout uses it and never marks orders paid. Shared `transitionOrder()` (ownership + allowed transitions + payment + OTP + conditional update). Payments bound to the gateway order id stored on the order; timing-safe signatures; idempotent webhook with amount check. Cancel refunds only paid orders. Late compensation uses real delivery time, once per order. Group finalize validates quantities and runs once. |
-| 7 | Delivery | ⬜ | |
+| 7 | Delivery | ✅ | Rider status route uses `transitionOrder()` (assignment + OTP, 5 attempts / 15 min). Shared `claimOrderForPartner()` for both accept routes (verified rider, ready + unassigned, paid or COD, race-safe). Rider feed (API + dashboard page) shows only own active + ready orders, no OTPs, customer contact only when assigned. Payouts via `request_payout()` with balance check, recorded as pending. Live location limited to rider / admin / customer being delivered to. Pages no longer auto-create verified riders. |
 | 8 | Vendor / catalog / subscriptions / uploads | ⬜ | |
 | 9 | Tests | ⬜ | |
 | 10 | Docs reorganisation | ⬜ | |
@@ -30,10 +30,10 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
 | C. Dev / debug | C1–C7 | ✅ |
 | D. Admin | D1–D4 | ✅ |
 | E. Orders & payments | E1–E9 | ✅ |
-| F. Delivery | F1–F6 | ⬜ |
+| F. Delivery | F1–F6 | ✅ |
 | G. Vendor etc. | G1–G11 | ⬜ |
 | H. Consistency & docs | H1 ✅ · H2 ⬜ |
-| I. Pages / browser bypass | I1, I5–I6 ✅ · I2–I4 ⬜ |
+| I. Pages / browser bypass | I1–I2, I5–I6 ✅ · I3–I4 ⬜ |
 
 ## Verification log
 

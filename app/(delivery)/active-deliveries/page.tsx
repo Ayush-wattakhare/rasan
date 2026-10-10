@@ -34,7 +34,7 @@ export default async function ActiveDeliveriesPage() {
   }
 
   // Fetch active deliveries
-  const { data: activeDeliveries } = await supabase
+  const { data: assignedOrders } = await supabase
     .from('orders')
     .select(
       `
@@ -50,6 +50,12 @@ export default async function ActiveDeliveriesPage() {
     .eq('delivery_partner_id', deliveryPartner.id)
     .in('status', ['picked_up', 'out_for_delivery'])
     .order('created_at', { ascending: false });
+
+  // The handover PIN is the customer's proof of delivery; never send it to the rider.
+  const activeDeliveries = (assignedOrders || []).map((o: any) => {
+    const { delivery_otp: _otp, ...address } = (o.delivery_address || {}) as any;
+    return { ...o, delivery_address: address };
+  });
 
   return (
     <div className="container mx-auto p-6">

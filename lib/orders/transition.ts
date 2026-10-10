@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import { canTransition, normalizeOrderStatus, type OrderActor } from '@/lib/utils/order-transitions';
 import { verifyDeliveryOtp } from '@/lib/utils/delivery-otp-server';
+import { rateLimit } from '@/lib/utils/rate-limit';
 import type { OrderStatus, UserRole } from '@/types';
 
 /** Minimum a rider earns per delivery when the order carries no delivery fee. */
@@ -127,6 +128,14 @@ export async function transitionOrder(params: {
     if (!params.otp) {
       return failure(400, 'Customer 4-digit Delivery PIN is required to complete handover.');
     }
+    // A 4-digit PIN has only 9000 values: cap attempts per rider and order.
+    const attempts = rateLimit(`delivery-otp:${params.userId}:${order.id}`, {
+      interval: 15 * 60 * 1000,
+      maxRequests: 5,
+    });
+    if (!attempts.success) {
+      return failure(429, 'Too many PIN attempts. Please wait and try again, or contact support.');
+    }
     if (!verifyDeliveryOtp(order, String(params.otp))) {
       return failure(
         400,
@@ -220,5 +229,85 @@ export async function recordCashCollected(params: {
     .maybeSingle();
 
   if (error || !updated) return failure(500, 'Failed to record payment');
+  return { ok: true, order: updated };
+}
+
+/**
+ * A verified rider claims a ready, unassigned order (and picks it up).
+ * The update only succeeds while the order is still `ready` with no rider,
+ * so two riders can never both win the same order.
+ */
+export async function claimOrderForPartner(params: {
+  orderId: string;
+  userId: string;
+}): Promise<TransitionResult> {
+  const serviceClient = createServiceClient();
+
+  const { data: partner } = await serviceClient
+    .from('delivery_partners')
+    .select('id, is_verified')
+    .eq('user_id', params.userId)
+    .maybeSingle();
+
+  if (!partner) return failure(404, 'Delivery partner record not found');
+  if (!partner.is_verified) return failure(403, 'Your rider account is awaiting admin verification');
+
+  const { data: order } = await serviceClient
+    .from('orders')
+    .select('id, status, customer_id, delivery_partner_id, tracking_updates, payment_method, payment_status')
+    .eq('id', params.orderId)
+    .maybeSingle();
+
+  if (!order) return failure(404, 'Order not found');
+  if (order.delivery_partner_id) return failure(409, 'Order already assigned');
+  if (order.status !== 'ready') return failure(409, 'Order is not ready for pickup');
+  if (order.payment_method !== 'cash' && order.payment_status !== 'paid') {
+    return failure(409, 'Order is awaiting payment');
+  }
+
+  const nowIso = new Date().toISOString();
+  const tracking = Array.isArray(order.tracking_updates) ? order.tracking_updates : [];
+
+  const { data: updated, error } = await serviceClient
+    .from('orders')
+    .update({
+      delivery_partner_id: partner.id,
+      status: 'picked_up',
+      updated_at: nowIso,
+      tracking_updates: [
+        ...tracking,
+        {
+          status: 'picked_up',
+          timestamp: nowIso,
+          message: 'Delivery partner has accepted the order and picked it up from the kitchen.',
+        },
+      ] as any,
+    })
+    .eq('id', order.id)
+    .eq('status', 'ready')
+    .is('delivery_partner_id', null)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.error('Claim order error:', error);
+    return failure(500, 'Failed to accept order');
+  }
+  if (!updated) return failure(409, 'Order was just taken by another rider');
+
+  if (order.customer_id) {
+    try {
+      await serviceClient.from('notifications').insert({
+        user_id: order.customer_id,
+        type: 'delivery',
+        title: '🛵 Order Assigned to Rider!',
+        message: 'Your tiffin has been picked up by a rider and is heading to your location.',
+        is_read: false,
+      });
+    } catch {
+      // Notifications are best-effort.
+    }
+  }
+
   return { ok: true, order: updated };
 }

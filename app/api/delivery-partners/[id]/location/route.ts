@@ -1,13 +1,46 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/guards';
+import type { UserRole } from '@/types';
+
+async function canViewPartnerLocation(partnerId: string, userId: string, role: UserRole | null) {
+  if (role === 'admin') return true;
+  const serviceClient = createServiceClient();
+
+  const { data: partner } = await serviceClient
+    .from('delivery_partners')
+    .select('user_id')
+    .eq('id', partnerId)
+    .maybeSingle();
+  if (partner?.user_id === userId) return true;
+
+  const { data: activeOrder } = await serviceClient
+    .from('orders')
+    .select('id')
+    .eq('delivery_partner_id', partnerId)
+    .eq('customer_id', userId)
+    .in('status', ['picked_up', 'out_for_delivery'])
+    .limit(1)
+    .maybeSingle();
+  return !!activeOrder;
+}
 import { NextResponse } from 'next/server';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+
   try {
     const supabase = await createClient();
     const { id } = await params;
+
+    // Live location is visible to the rider, admins, and customers whose order
+    // this rider is currently delivering.
+    if (!(await canViewPartnerLocation(id, auth.user.id, auth.role))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { data: partner, error } = await supabase
       .from('delivery_partners')

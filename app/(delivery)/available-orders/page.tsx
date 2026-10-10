@@ -27,35 +27,20 @@ export default async function AvailableOrdersPage() {
 
   const serviceClient = createServiceClient();
 
-  // Fetch or auto-provision delivery partner record
-  let { data: deliveryPartner } = await serviceClient
+  const { data: deliveryPartner } = await serviceClient
     .from('delivery_partners')
     .select('*')
     .eq('user_id', user.id)
     .maybeSingle();
 
+  // Riders are created through the application form and verified by an admin.
   if (!deliveryPartner) {
-    const { data: newPartner } = await serviceClient
-      .from('delivery_partners')
-      .insert({
-        user_id: user.id,
-        vehicle_type: 'bike',
-        vehicle_number: 'MH 14 DA 2024',
-        license_number: 'MH14-2022-0098765',
-        is_online: true,
-        is_verified: true,
-        rating: 4.9,
-        total_deliveries: 48,
-        earnings: { today: 450, this_week: 2850, this_month: 11200, total: 34500 },
-      })
-      .select()
-      .single();
-
-    deliveryPartner = newPartner;
+    redirect('/become-delivery-partner');
   }
 
   // Fetch orders ready for delivery pickup
-  const { data: availableOrders } = await serviceClient
+  const { data: readyOrders } = deliveryPartner.is_verified
+    ? await serviceClient
     .from('orders')
     .select(
       `
@@ -68,16 +53,33 @@ export default async function AvailableOrdersPage() {
       )
     `
     )
-    .in('status', ['ready', 'ready_for_pickup', 'preparing'])
+    .eq('status', 'ready')
     .is('delivery_partner_id', null)
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(20)
+    : { data: [] as any[] };
+
+  // Never ship the customer's handover PIN to the rider's browser.
+  const availableOrders = (readyOrders || [])
+    .filter((o: any) => o.payment_method === 'cash' || o.payment_status === 'paid')
+    .map((o: any) => {
+      const { delivery_otp: _otp, ...address } = (o.delivery_address || {}) as any;
+      return { ...o, delivery_address: address };
+    });
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <h1 className="text-3xl font-black text-gray-900 uppercase italic tracking-tight mb-6">
         Available Orders for Pickup
       </h1>
+
+      {!deliveryPartner.is_verified && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
+            Your rider account is awaiting admin verification. Orders will appear here once approved.
+          </p>
+        </div>
+      )}
 
       {deliveryPartner && !deliveryPartner.is_online && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
@@ -88,7 +90,7 @@ export default async function AvailableOrdersPage() {
       )}
 
       <AvailableOrdersList
-        orders={availableOrders || []}
+        orders={availableOrders}
         deliveryPartnerId={deliveryPartner?.id || ''}
         isOnline={deliveryPartner?.is_online ?? true}
         currentLocation={deliveryPartner?.current_location}
