@@ -9,3 +9,14 @@ export function getDeliveryOtp(order: { delivery_address?: any } | null | undefi
   const otp = order?.delivery_address?.delivery_otp;
   return otp ? String(otp).trim() : null;
 }
+
+/**
+ * Returns the order without the handover PIN. Use before sending orders to
+ * anyone other than the customer (riders, kitchens).
+ */
+export function withoutDeliveryOtp<T extends { delivery_address?: any }>(order: T): T {
+  const address = order?.delivery_address;
+  if (!address || typeof address !== 'object') return order;
+  const { delivery_otp: _otp, ...rest } = address;
+  return { ...order, delivery_address: rest };
+}

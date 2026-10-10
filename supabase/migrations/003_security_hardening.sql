@@ -158,6 +158,11 @@ CREATE POLICY "Customers can rate their own delivered orders"
 -- ---------------------------------------------------------------------------
 -- 6. subscriptions: created by server routes; customers manage schedule fields only
 -- ---------------------------------------------------------------------------
+-- One subscription per checkout order (set when created from checkout).
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES orders(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_order_id ON subscriptions(order_id)
+  WHERE order_id IS NOT NULL;
+
 REVOKE INSERT, UPDATE ON subscriptions FROM anon, authenticated;
 GRANT UPDATE (status, deliveries, address, delivery_time, delivery_days, auto_renew, updated_at)
   ON subscriptions TO authenticated;

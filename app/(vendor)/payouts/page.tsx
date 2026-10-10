@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { RASAN_COMMISSION_PERCENTAGE, RASAN_COMMISSION_RATE } from '@/lib/utils/constants';
 import { IndianRupee } from 'lucide-react';
 import { VendorPayoutsClient } from '@/components/vendor/vendor-payouts-client';
 
@@ -27,37 +28,11 @@ export default async function PayoutsPage() {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
-  let vendor = vendors && vendors.length > 0 ? vendors[0] : null;
+  const vendor = vendors && vendors.length > 0 ? vendors[0] : null;
 
+  // Vendor records are created through the application form and approved by an admin.
   if (!vendor) {
-    const defaultHours: any = {
-      monday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      tuesday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      wednesday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      thursday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      friday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      saturday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      sunday: { open_time: '09:00', close_time: '21:00', is_open: true },
-    };
-
-    const { data: newVendor } = await serviceClient
-      .from('vendors')
-      .insert({
-        user_id: user.id,
-        business_name: user.user_metadata?.name || 'Home Kitchen',
-        cuisine: ['Indian'],
-        address: 'Pune, Maharashtra',
-        phone: user.user_metadata?.phone || '',
-        email: user.email || '',
-        location: 'POINT(73.8567 18.5204)' as any,
-        operating_hours: defaultHours,
-        is_active: true,
-        rating: 5.0,
-        total_orders: 0,
-      } as any)
-      .select()
-      .single();
-    vendor = newVendor;
+    redirect('/become-vendor');
   }
 
   const now = new Date();
@@ -65,26 +40,12 @@ export default async function PayoutsPage() {
   const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-  // Get orders for this vendor or demo fallback
-  let ordersQuery = serviceClient
+  const ordersQuery = serviceClient
     .from('orders')
     .select('id, total, status, created_at')
+    .eq('vendor_id', vendor.id)
     .eq('status', 'delivered')
     .order('created_at', { ascending: false });
-
-  if (vendor?.id) {
-    ordersQuery = serviceClient
-      .from('orders')
-      .select('id, total, status, created_at')
-      .eq('vendor_id', vendor.id)
-      .eq('status', 'delivered')
-      .order('created_at', { ascending: false });
-  } else {
-    ordersQuery = serviceClient
-      .from('orders')
-      .select('id, total, status, created_at')
-      .eq('id', '00000000-0000-0000-0000-000000000000');
-  }
 
   const { data: rawOrders } = await ordersQuery;
   const allDeliveredOrders = rawOrders || [];
@@ -93,7 +54,7 @@ export default async function PayoutsPage() {
   const weekOrders = allDeliveredOrders.filter((o) => o.created_at >= startOfWeek);
   const monthOrders = allDeliveredOrders.filter((o) => o.created_at >= startOfMonth);
 
-  const PLATFORM_FEE = 0.1; // 10%
+  const PLATFORM_FEE = RASAN_COMMISSION_RATE;
   const calc = (orders: any[]) => {
     const gross = orders.reduce((s, o) => s + (o.total || 0), 0);
     return { gross, fee: gross * PLATFORM_FEE, net: gross * (1 - PLATFORM_FEE), count: orders.length };
@@ -103,6 +64,15 @@ export default async function PayoutsPage() {
   const week = calc(weekOrders);
   const month = calc(monthOrders);
   const all = calc(allDeliveredOrders);
+
+  // Same rule as request_payout(): earlier non-rejected payouts reduce the balance.
+  const { data: previousPayouts } = await serviceClient
+    .from('payouts')
+    .select('amount, status')
+    .eq('user_id', user.id)
+    .eq('payee_type', 'vendor')
+    .neq('status', 'rejected');
+  const requestedPayouts = (previousPayouts || []).reduce((s, p) => s + Number(p.amount || 0), 0);
 
   const stats = [
     { label: 'Today', ...today },
@@ -125,7 +95,7 @@ export default async function PayoutsPage() {
             PAYOUTS & <span className="text-orange-600">EARNINGS</span>
           </h1>
           <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[0.65rem]">
-            {vendor?.business_name || 'Home Kitchen'} • Platform fee: 10% • Instant UPI & Bank Settlements
+            {vendor.business_name} • Platform fee: {RASAN_COMMISSION_PERCENTAGE}% • UPI & Bank Settlements
           </p>
         </div>
       </section>
@@ -134,8 +104,9 @@ export default async function PayoutsPage() {
         <VendorPayoutsClient
           stats={stats}
           allOrders={allDeliveredOrders}
-          vendor={vendor!}
+          vendor={vendor}
           platformFeePct={PLATFORM_FEE}
+          requestedPayouts={requestedPayouts}
         />
       </div>
     </div>

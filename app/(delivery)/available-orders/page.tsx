@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { withoutDeliveryOtp } from '@/lib/utils/delivery-otp';
 import AvailableOrdersList from '@/components/delivery/available-orders-list';
 
 export const dynamic = 'force-dynamic';
@@ -62,10 +63,7 @@ export default async function AvailableOrdersPage() {
   // Never ship the customer's handover PIN to the rider's browser.
   const availableOrders = (readyOrders || [])
     .filter((o: any) => o.payment_method === 'cash' || o.payment_status === 'paid')
-    .map((o: any) => {
-      const { delivery_otp: _otp, ...address } = (o.delivery_address || {}) as any;
-      return { ...o, delivery_address: address };
-    });
+    .map(withoutDeliveryOtp);
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">

@@ -25,37 +25,11 @@ export default async function VendorProfilePage() {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
-  let vendor = vendors && vendors.length > 0 ? vendors[0] : null;
+  const vendor = vendors && vendors.length > 0 ? vendors[0] : null;
 
+  // Vendor records are created through the application form and approved by an admin.
   if (!vendor) {
-    const defaultHours: any = {
-      monday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      tuesday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      wednesday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      thursday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      friday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      saturday: { open_time: '09:00', close_time: '21:00', is_open: true },
-      sunday: { open_time: '09:00', close_time: '21:00', is_open: true },
-    };
-
-    const { data: newVendor } = await serviceClient
-      .from('vendors')
-      .insert({
-        user_id: user.id,
-        business_name: user.user_metadata?.name || 'Home Kitchen',
-        cuisine: ['Indian'],
-        address: 'Pune, Maharashtra',
-        phone: user.user_metadata?.phone || '',
-        email: user.email || '',
-        location: 'POINT(73.8567 18.5204)' as any,
-        operating_hours: defaultHours,
-        is_active: true,
-        rating: 5.0,
-        total_orders: 0,
-      } as any)
-      .select()
-      .single();
-    vendor = newVendor;
+    redirect('/become-vendor');
   }
 
   return <VendorProfileForm vendor={vendor} />;

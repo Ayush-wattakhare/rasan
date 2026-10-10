@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { withoutDeliveryOtp } from '@/lib/utils/delivery-otp';
 import ActiveDeliveryCard from '@/components/delivery/active-delivery-card';
 
 export default async function ActiveDeliveriesPage() {
@@ -52,10 +53,7 @@ export default async function ActiveDeliveriesPage() {
     .order('created_at', { ascending: false });
 
   // The handover PIN is the customer's proof of delivery; never send it to the rider.
-  const activeDeliveries = (assignedOrders || []).map((o: any) => {
-    const { delivery_otp: _otp, ...address } = (o.delivery_address || {}) as any;
-    return { ...o, delivery_address: address };
-  });
+  const activeDeliveries = (assignedOrders || []).map(withoutDeliveryOtp);
 
   return (
     <div className="container mx-auto p-6">

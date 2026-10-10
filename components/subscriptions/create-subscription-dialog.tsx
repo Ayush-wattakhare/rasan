@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
+import { calculateSubscriptionPricing } from '@/lib/pricing/subscription-pricing';
 
 interface CreateSubscriptionDialogProps {
   vendors: any[];
@@ -41,50 +42,6 @@ interface CreateSubscriptionDialogProps {
   defaultPlanType?: 'daily' | 'weekly' | 'monthly';
   triggerButton?: React.ReactNode;
 }
-
-const calculateSubscriptionPricing = (
-  planType: string,
-  mealType: string,
-  deliveryDaysCount: number
-) => {
-  const days = Math.max(1, deliveryDaysCount);
-  const baseMealPrices: Record<string, number> = {
-    breakfast: 100,
-    lunch: 150,
-    dinner: 150,
-    all: 350,
-  };
-  const basePerMeal = baseMealPrices[mealType] || 150;
-
-  let multiplier = days;
-  let discountPct = 0;
-
-  if (planType === 'weekly') {
-    discountPct = 20; // 20% discount for weekly
-    multiplier = days;
-  } else if (planType === 'monthly') {
-    discountPct = 30; // 30% discount for monthly
-    multiplier = days * 4;
-  } else {
-    // daily
-    discountPct = 0;
-    multiplier = 1;
-  }
-
-  const basePrice = basePerMeal * multiplier;
-  const savings = Math.round((basePrice * discountPct) / 100);
-  const finalPrice = Math.max(0, basePrice - savings);
-
-  return {
-    days,
-    multiplier,
-    basePerMeal,
-    basePrice,
-    savings,
-    finalPrice,
-    discountPct,
-  };
-};
 
 const getCalculatedDates = (planType: string, customStartDate?: string) => {
   const start = customStartDate ? new Date(customStartDate) : new Date();
@@ -206,10 +163,8 @@ export default function CreateSubscriptionDialog({
     }
 
     try {
-      const payload = {
-        ...formData,
-        price: currentPrice,
-      };
+      // The server computes the price and plan dates itself.
+      const payload = { ...formData };
 
       const response = await fetch('/api/subscriptions', {
         method: 'POST',

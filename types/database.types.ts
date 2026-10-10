@@ -400,6 +400,7 @@ export interface Database {
           payment_status: PaymentStatus;
           auto_renew: boolean;
           deliveries: SubscriptionDelivery[];
+          order_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -419,6 +420,7 @@ export interface Database {
           payment_status?: PaymentStatus;
           auto_renew?: boolean;
           deliveries?: SubscriptionDelivery[];
+          order_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -438,6 +440,7 @@ export interface Database {
           payment_status?: PaymentStatus;
           auto_renew?: boolean;
           deliveries?: SubscriptionDelivery[];
+          order_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

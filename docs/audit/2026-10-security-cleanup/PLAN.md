@@ -112,6 +112,7 @@ Common themes:
 - **subscriptions**: revoke INSERT; grant UPDATE only on schedule/address fields
   (`status, deliveries, address, delivery_time, auto_renew`) plus trigger forbidding
   reviving cancelled/expired subscriptions.
+- **subscriptions.order_id** (unique): one subscription per checkout order.
 - **reviews**: INSERT requires own, delivered order.
 - **payouts** table + `request_payout()` function (service-role only): atomic balance check
   and deduction for vendors and delivery partners.

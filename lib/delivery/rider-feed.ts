@@ -1,14 +1,8 @@
 import { createServiceClient } from '@/lib/supabase/server';
+import { withoutDeliveryOtp } from '@/lib/utils/delivery-otp';
 
 const ORDER_COLUMNS =
   'id, order_number, customer_id, vendor_id, delivery_partner_id, items, subtotal, delivery_fee, tax, discount, total, status, payment_status, payment_method, delivery_address, delivery_instructions, estimated_delivery_time, actual_delivery_time, tracking_updates, created_at, updated_at';
-
-/** The handover PIN belongs to the customer; riders must never receive it. */
-function withoutOtp(address: any) {
-  if (!address || typeof address !== 'object') return address;
-  const { delivery_otp: _otp, ...rest } = address;
-  return rest;
-}
 
 type RiderPartner = { id: string; is_verified: boolean | null };
 
@@ -60,17 +54,15 @@ export async function getRiderFeed(deliveryPartner: RiderPartner) {
   const profileMap = new Map((profilesList || []).map((p: any) => [p.id, p]));
 
   const activeDeliveries = active.map((order: any) => ({
-    ...order,
-    delivery_address: withoutOtp(order.delivery_address),
-    profiles: profileMap.get(order.customer_id) || null,
+    ...withoutDeliveryOtp(order),
+        profiles: profileMap.get(order.customer_id) || null,
     vendors: vendorMap.get(order.vendor_id) || null,
   }));
 
   const availableOrders = available.map((order: any) => ({
-    ...order,
+    ...withoutDeliveryOtp(order),
     customer_id: null,
-    delivery_address: withoutOtp(order.delivery_address),
-    profiles: null,
+        profiles: null,
     vendors: vendorMap.get(order.vendor_id) || null,
   }));
 
