@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { createServiceClient } from '@/lib/supabase/server';
 
 export interface RefundRecord {
   id: string;
@@ -62,14 +63,10 @@ const MEMORY_REFUNDS: RefundRecord[] = [
 ];
 
 export async function GET() {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const totalRefunded = MEMORY_REFUNDS.reduce((sum, r) => sum + r.amount, 0);
 
     return NextResponse.json({
@@ -84,14 +81,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { orderId, recipientId, recipientRole, recipientName, amount, type, reason, gateway } = body;
 

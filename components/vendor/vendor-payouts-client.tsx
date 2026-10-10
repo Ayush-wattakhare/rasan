@@ -32,6 +32,8 @@ interface VendorPayoutsClientProps {
   allOrders: any[];
   vendor: any;
   platformFeePct: number;
+  /** Sum of payouts already requested (pending or completed). */
+  requestedPayouts?: number;
 }
 
 export function VendorPayoutsClient({
@@ -39,6 +41,7 @@ export function VendorPayoutsClient({
   allOrders,
   vendor,
   platformFeePct,
+  requestedPayouts = 0,
 }: VendorPayoutsClientProps) {
   const { toast } = useToast();
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
@@ -55,7 +58,9 @@ export function VendorPayoutsClient({
   });
 
   const allTimeNet = stats[3]?.net || 0;
-  const [availableBalance, setAvailableBalance] = useState<number>(allTimeNet);
+  const [availableBalance, setAvailableBalance] = useState<number>(
+    Math.max(0, allTimeNet - requestedPayouts)
+  );
 
   const handleSaveBankDetails = async () => {
     setIsSavingBank(true);

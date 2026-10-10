@@ -59,7 +59,8 @@ export function OrderTrackingClient({ initialOrder }: OrderTrackingClientProps) 
         (payload) => {
           const updated = payload.new as Order;
           if (updated && updated.status) {
-            setOrder(updated);
+            // Merge: realtime rows don't carry the customer's handover-code embed.
+            setOrder((prev) => ({ ...prev, ...updated }));
           }
         }
       )

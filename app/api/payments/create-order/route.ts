@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import Razorpay from 'razorpay';
 import Stripe from 'stripe';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/guards';
+import { loadPayableOrder, toMinorUnits } from '@/lib/payments/order-payment';
 
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -19,93 +21,93 @@ const stripe = process.env.STRIPE_SECRET_KEY
     })
   : null;
 
+/**
+ * Starts a gateway payment for one of the caller's unpaid orders.
+ * The amount always comes from the order in the database; any amount in the
+ * request body is ignored. The gateway's order / intent id is stored on the
+ * order so /api/payments/verify can bind the payment to it.
+ */
 export async function POST(request: NextRequest) {
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-
-    // Check authentication
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
-    const { amount, currency = 'INR', orderId, provider, customerEmail, customerName } = body;
+    const { orderId, provider } = body ?? {};
 
-    if (!amount || !orderId || !provider) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    if (!orderId || !provider) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const payable = await loadPayableOrder(orderId, auth.user.id);
+    if ('error' in payable) {
+      return NextResponse.json({ error: payable.error }, { status: payable.status });
+    }
+    const { order } = payable;
+    const amount = toMinorUnits(order.total);
+    const serviceClient = createServiceClient();
 
     if (provider === 'razorpay') {
       if (!razorpay) {
-        return NextResponse.json(
-          { error: 'Razorpay not configured' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Razorpay not configured' }, { status: 500 });
       }
 
-      // Create Razorpay order
       const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(amount * 100), // Convert to paise
-        currency,
-        receipt: orderId,
+        amount,
+        currency: 'INR',
+        receipt: order.id,
         notes: {
-          order_id: orderId,
-          customer_id: user.id,
+          order_id: order.id,
+          customer_id: auth.user.id,
         },
       });
+
+      await serviceClient
+        .from('orders')
+        .update({ payment_order_id: razorpayOrder.id })
+        .eq('id', order.id)
+        .eq('payment_status', 'pending');
 
       return NextResponse.json({
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
-        orderId,
+        orderId: order.id,
       });
-    } else if (provider === 'stripe') {
+    }
+
+    if (provider === 'stripe') {
       if (!stripe) {
-        return NextResponse.json(
-          { error: 'Stripe not configured' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
       }
 
-      // Create Stripe payment intent
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Convert to cents
-        currency: currency.toLowerCase(),
+        amount,
+        currency: 'inr',
         metadata: {
-          order_id: orderId,
-          customer_id: user.id,
+          order_id: order.id,
+          customer_id: auth.user.id,
         },
         automatic_payment_methods: {
           enabled: true,
         },
       });
 
+      await serviceClient
+        .from('orders')
+        .update({ payment_order_id: paymentIntent.id })
+        .eq('id', order.id)
+        .eq('payment_status', 'pending');
+
       return NextResponse.json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
       });
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid payment provider' },
-        { status: 400 }
-      );
     }
+
+    return NextResponse.json({ error: 'Invalid payment provider' }, { status: 400 });
   } catch (error) {
     console.error('Payment order creation error:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to create payment order',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create payment order' }, { status: 500 });
   }
 }

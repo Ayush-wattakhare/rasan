@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -73,7 +73,9 @@ export async function POST(
 
     const latestDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1].toISOString().split('T')[0] : subscription.end_date;
 
-    const { data: updatedSubscription, error: updateError } = await supabase
+    // end_date is not user-writable (migration 003); ownership was checked above.
+    const serviceClient = createServiceClient();
+    const { data: updatedSubscription, error: updateError } = await serviceClient
       .from('subscriptions')
       .update({
         deliveries,
@@ -81,11 +83,12 @@ export async function POST(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('customer_id', user.id)
       .select('*, vendors(id, business_name)')
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to update subscription' }, { status: 500 });
     }
 
     return NextResponse.json({

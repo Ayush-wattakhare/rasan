@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { createServiceClient } from '@/lib/supabase/server';
 
 export interface BroadcastMessage {
   id: string;
@@ -33,6 +34,9 @@ const MEMORY_BROADCASTS: BroadcastMessage[] = [
 ];
 
 export async function GET() {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   return NextResponse.json({
     success: true,
     broadcasts: MEMORY_BROADCASTS,
@@ -40,19 +44,19 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { title, message, target, priority } = body;
 
     if (!title || !message) {
       return NextResponse.json({ error: 'Title and message are required' }, { status: 400 });
+    }
+
+    if (target !== undefined && !['all', 'customer', 'vendor', 'delivery'].includes(target)) {
+      return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
 
     const newBroadcast: BroadcastMessage = {

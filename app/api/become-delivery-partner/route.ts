@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveApplicantAccount } from '@/lib/auth/applicant-account';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,60 +24,24 @@ export async function POST(request: NextRequest) {
       fullName,
     } = body;
 
-    let targetUserId = authUser?.id;
-
-    // If user is not logged in, create account using provided email & password
-    if (!targetUserId) {
-      const applicantEmail = email?.trim();
-      const applicantPassword = password?.trim();
-
-      if (!applicantEmail || !applicantPassword) {
-        return NextResponse.json(
-          { error: 'Please log in or enter an email and password to create your delivery partner account.' },
-          { status: 401 }
-        );
-      }
-
-      const { data: newUser, error: createError } = await serviceSupabase.auth.admin.createUser({
-        email: applicantEmail,
-        password: applicantPassword,
-        email_confirm: true,
-        user_metadata: {
-          name: fullName || 'Delivery Partner',
-          role: 'delivery',
-        },
-      });
-
-      if (createError) {
-        if (createError.message.toLowerCase().includes('already') || createError.message.toLowerCase().includes('exists')) {
-          return NextResponse.json(
-            { error: 'An account with this email already exists. Please log in first.' },
-            { status: 400 }
-          );
-        }
-        throw createError;
-      }
-
-      targetUserId = newUser.user.id;
-
-      // Upsert profile
-      await serviceSupabase.from('profiles').upsert({
-        id: targetUserId,
-        email: applicantEmail,
-        name: fullName || 'Delivery Partner',
-        phone: emergencyContact || '',
-        role: 'delivery',
-        is_verified: false,
-        is_active: true,
-      });
-    }
-
     if (!vehicleType || !vehicleNumber || !licenseNumber) {
       return NextResponse.json(
         { error: 'Vehicle type, vehicle number, and license number are required' },
         { status: 400 }
       );
     }
+
+    const applicant = await resolveApplicantAccount({
+      authUser,
+      email,
+      password,
+      name: fullName || 'Delivery Partner',
+      phone: emergencyContact,
+      role: 'delivery',
+    });
+    if (!applicant.ok) return applicant.response;
+    const targetUserId = applicant.userId;
+
 
     // Check if delivery record already exists for user
     const { data: existingPartner } = await serviceSupabase
@@ -104,7 +69,7 @@ export async function POST(request: NextRequest) {
         vehicle_number: vehicleNumber,
         license_number: licenseNumber,
         is_online: false,
-        rating: 5.0,
+        rating: 0,
         total_deliveries: 0,
         bank_details: {
           account_number: bankAccountNumber || '',

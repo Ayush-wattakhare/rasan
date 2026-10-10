@@ -1,27 +1,41 @@
 import { createClient } from '@/lib/supabase/client';
-import type {
-  Order,
-  OrderInsert,
-  OrderUpdate,
-  OrderFilters,
-} from '@/lib/supabase/types';
-import type { OrderItem, TrackingUpdate } from '@/types';
+import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
+import type { Order, OrderFilters } from '@/lib/supabase/types';
+import type { Address, OrderItem, PaymentMethod, SubscriptionType } from '@/types';
+
+export type CreateOrderRequest = {
+  items: {
+    meal_id: string;
+    quantity: number;
+    subscription_type?: SubscriptionType;
+    delivery_days?: string[];
+    delivery_time?: string;
+  }[];
+  payment_method: PaymentMethod;
+  delivery_address: Address;
+  delivery_instructions?: string | null;
+};
 
 export class OrderService {
   private supabase = createClient();
 
   /**
-   * Create a new order
+   * Create a new order through the API, which prices it from the database.
    */
-  async createOrder(orderData: OrderInsert): Promise<Order> {
-    const { data, error } = await this.supabase
-      .from('orders')
-      .insert(orderData)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+  async createOrder(request: CreateOrderRequest): Promise<Order> {
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const unavailable = Array.isArray(data.unavailableItems) && data.unavailableItems.length
+        ? `: ${data.unavailableItems.join(', ')}`
+        : '';
+      throw new Error(`${data.error || 'Could not place order'}${unavailable}`);
+    }
+    return data as Order;
   }
 
   /**
@@ -30,7 +44,7 @@ export class OrderService {
   async getOrderById(orderId: string): Promise<Order | null> {
     const { data, error } = await this.supabase
       .from('orders')
-      .select('*')
+      .select(`*, ${HANDOVER_EMBED}`)
       .eq('id', orderId)
       .single();
 
@@ -42,7 +56,7 @@ export class OrderService {
    * Get orders with filters
    */
   async getOrders(filters: OrderFilters = {}) {
-    let query = this.supabase.from('orders').select('*');
+    let query = this.supabase.from('orders').select(`*, ${HANDOVER_EMBED}`);
 
     if (filters.customer_id) {
       query = query.eq('customer_id', filters.customer_id);
@@ -81,97 +95,6 @@ export class OrderService {
   }
 
   /**
-   * Update order status
-   */
-  async updateOrderStatus(
-    orderId: string,
-    status: Order['status'],
-    note?: string
-  ): Promise<Order> {
-    // Get current order
-    const order = await this.getOrderById(orderId);
-    if (!order) throw new Error('Order not found');
-
-    // Create tracking update
-    const trackingUpdate: TrackingUpdate = {
-      status,
-      timestamp: new Date().toISOString(),
-      note: note || undefined,
-    };
-
-    // Update order
-    const updates: OrderUpdate = {
-      status,
-      tracking_updates: [...(order.tracking_updates || []), trackingUpdate],
-    };
-
-    // If status is delivered, set actual delivery time
-    if (status === 'delivered') {
-      updates.actual_delivery_time = new Date().toISOString();
-    }
-
-    const { data, error } = await this.supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  /**
-   * Update order payment status
-   */
-  async updatePaymentStatus(
-    orderId: string,
-    paymentStatus: Order['payment_status'],
-    paymentId?: string
-  ): Promise<Order | any> {
-    if (typeof window !== 'undefined') {
-      try {
-        const res = await fetch(`/api/orders/${orderId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            payment_status: paymentStatus,
-            payment_id: paymentId,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return data.order || data;
-        }
-      } catch (err) {
-        console.warn('API updatePaymentStatus error, falling back to direct:', err);
-      }
-    }
-
-    const updates: OrderUpdate = {
-      payment_status: paymentStatus,
-    };
-
-    if (paymentId) {
-      updates.payment_id = paymentId;
-    }
-
-    if (paymentStatus === 'paid') {
-      updates.status = 'confirmed';
-    }
-
-    const { data, error } = await this.supabase
-      .from('orders')
-      .update(updates)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  /**
    * Rate an order
    */
   async rateOrder(
@@ -187,13 +110,6 @@ export class OrderService {
 
     if (error) throw error;
     return data;
-  }
-
-  /**
-   * Cancel an order
-   */
-  async cancelOrder(orderId: string, reason?: string): Promise<Order> {
-    return this.updateOrderStatus(orderId, 'cancelled', reason);
   }
 
   /**

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -149,7 +149,7 @@ export async function POST(
     }
 
     // Notify customer
-    await supabase.from('notifications').insert({
+    await createServiceClient().from('notifications').insert({
       user_id: user.id,
       type: 'system',
       title: 'Meal Preference Updated',
@@ -159,7 +159,7 @@ export async function POST(
 
     // Notify home chef if vendor has user_id
     if (subscription.vendors?.user_id) {
-      await supabase.from('notifications').insert({
+      await createServiceClient().from('notifications').insert({
         user_id: subscription.vendors.user_id,
         type: 'order',
         title: 'Tiffin Customization Request',

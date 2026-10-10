@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PUBLIC_VENDOR_COLUMNS } from '@/lib/supabase/public-columns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ export default async function PopularVendors() {
 
     const { data } = await supabase
       .from('vendors')
-      .select('*')
+      .select(PUBLIC_VENDOR_COLUMNS)
       .eq('is_active', true)
       .order('rating', { ascending: false })
       .limit(8);

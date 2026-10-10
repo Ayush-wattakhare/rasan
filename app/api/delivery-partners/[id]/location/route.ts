@@ -1,15 +1,47 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/guards';
+import type { UserRole } from '@/types';
+
+async function canViewPartnerLocation(partnerId: string, userId: string, role: UserRole | null) {
+  if (role === 'admin') return true;
+  const serviceClient = createServiceClient();
+
+  const { data: partner } = await serviceClient
+    .from('delivery_partners')
+    .select('user_id')
+    .eq('id', partnerId)
+    .maybeSingle();
+  if (partner?.user_id === userId) return true;
+
+  const { data: activeOrder } = await serviceClient
+    .from('orders')
+    .select('id')
+    .eq('delivery_partner_id', partnerId)
+    .eq('customer_id', userId)
+    .in('status', ['picked_up', 'out_for_delivery'])
+    .limit(1)
+    .maybeSingle();
+  return !!activeOrder;
+}
 import { NextResponse } from 'next/server';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
     const { id } = await params;
 
-    const { data: partner, error } = await supabase
+    // Live location is visible to the rider, admins, and customers whose order
+    // this rider is currently delivering.
+    if (!(await canViewPartnerLocation(id, auth.user.id, auth.role))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { data: partner, error } = await createServiceClient()
       .from('delivery_partners')
       .select('id, is_online, current_location, updated_at')
       .eq('id', id)
@@ -115,11 +147,15 @@ export async function PUT(
     }
 
     // Update location using PostGIS point
-    const { data: updated, error } = await (supabase.rpc as any)('update_delivery_partner_location', {
-      p_delivery_partner_id: id,
-      p_lat: lat,
-      p_lng: lng,
-    });
+    // (WKT POINT(lng lat); the rider may write current_location on their own row)
+    const { error } = await supabase
+      .from('delivery_partners')
+      .update({
+        current_location: `POINT(${lng} ${lat})` as any,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error updating delivery partner location:', error);

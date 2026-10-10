@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
       .from('profiles')
       .update({
         is_verified: isAccept,
-        is_active: isAccept,
+        // Declining an application doesn't suspend the account: the person can
+        // keep using Rasan as a customer. Suspension is a separate admin action.
         updated_at: new Date().toISOString(),
       })
       .eq('id', targetUserId);

@@ -4,8 +4,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import type { CartItem, Cart, SubscriptionType } from '@/types';
 
 const CART_STORAGE_KEY = 'rasan_cart';
-const PLATFORM_FEE = 2;
-const DELIVERY_FEE = 0;
+import {
+  DELIVERY_FEE,
+  PLATFORM_FEE,
+  SUBSCRIPTION_DISCOUNT_PCT,
+  calculateCartTotals,
+  getItemPricing,
+} from '@/lib/pricing/order-pricing';
+
+export { getItemPricing };
 
 interface CartContextType {
   cart: Cart;
@@ -19,49 +26,6 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
-
-export const getItemPricing = (item: CartItem) => {
-  const subType = item.subscription_type || 'one-time';
-  const price = Number(item.price) || 0;
-  const quantity = Math.max(1, item.quantity || 1);
-  const daysCount = Math.max(1, (item.delivery_days || []).length);
-
-  let discountPct = 0;
-  let multiplier = 1;
-  let cycleDescription = '1 meal';
-
-  if (subType === 'weekly') {
-    discountPct = 20; // 20% OFF for weekly plan
-    multiplier = daysCount; // Delivers on each selected day in the week
-    cycleDescription = `${daysCount} meal${daysCount > 1 ? 's' : ''} (${daysCount} days/wk)`;
-  } else if (subType === 'monthly') {
-    discountPct = 30; // 30% OFF for monthly plan
-    multiplier = daysCount * 4; // 4 weeks of selected delivery days
-    cycleDescription = `${daysCount * 4} meals (${daysCount} days/wk × 4 wks)`;
-  } else {
-    // One-time / Daily
-    discountPct = 0;
-    multiplier = 1;
-    cycleDescription = '1 meal';
-  }
-
-  const basePrice = price * multiplier * quantity;
-  const savings = Math.round((basePrice * discountPct) / 100);
-  const finalPrice = Math.max(0, basePrice - savings);
-  const pricePerMeal = multiplier > 0 ? finalPrice / (multiplier * quantity) : price;
-
-  return {
-    subType,
-    daysCount,
-    multiplier,
-    discountPct,
-    basePrice,
-    savings,
-    finalPrice,
-    pricePerMeal,
-    cycleDescription,
-  };
-};
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<Cart>({
@@ -77,23 +41,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const calculateTotals = useCallback((items: CartItem[]) => {
-    let baseSubtotal = 0;
-    let totalSavings = 0;
-    let subtotal = 0;
-
-    items.forEach((item) => {
-      const pricing = getItemPricing(item);
-      baseSubtotal += pricing.basePrice;
-      totalSavings += pricing.savings;
-      subtotal += pricing.finalPrice;
-    });
-
-    return {
-      base_subtotal: baseSubtotal,
-      total_savings: totalSavings,
-      subtotal,
-      total: subtotal + PLATFORM_FEE + DELIVERY_FEE,
-    };
+    const { base_subtotal, total_savings, subtotal, total } = calculateCartTotals(items);
+    return { base_subtotal, total_savings, subtotal, total };
   }, []);
 
   // Load cart from localStorage on mount
@@ -105,8 +54,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         
         const sanitizedItems = (parsedCart.items || []).map((item) => {
           const subType = item.subscription_type || 'one-time';
-          const discountPct =
-            subType === 'weekly' ? 20 : subType === 'monthly' ? 30 : 0;
+          const discountPct = SUBSCRIPTION_DISCOUNT_PCT[subType] ?? 0;
 
           return {
             ...item,
@@ -236,12 +184,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             let nextDiscount = updates.discount_percentage ?? item.discount_percentage ?? 0;
 
             if (updates.subscription_type !== undefined) {
-              nextDiscount =
-                updates.subscription_type === 'weekly'
-                  ? 20
-                  : updates.subscription_type === 'monthly'
-                  ? 30
-                  : 0;
+              nextDiscount = SUBSCRIPTION_DISCOUNT_PCT[updates.subscription_type] ?? 0;
             }
 
             return {

@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth/guards';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireRole('vendor');
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
+
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const serviceClient = createServiceClient();
 
     // 1. Fetch vendor record for this authenticated user
@@ -22,26 +17,13 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    let vendor = initialVendor;
-
+    // Only the caller's own kitchen; never fall back to another vendor.
+    const vendor = initialVendor;
     if (!vendor) {
-      // Fallback: Check if user has vendor role and link to primary active vendor
-      const { data: fallbackVendor } = await serviceClient
-        .from('vendors')
-        .select('id, business_name, cuisine, rating, user_id')
-        .eq('is_active', true)
-        .order('rating', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fallbackVendor) {
-        vendor = fallbackVendor;
-      } else {
-        return NextResponse.json(
-          { error: 'Vendor profile not found for this user.' },
-          { status: 404 }
-        );
-      }
+      return NextResponse.json(
+        { error: 'Vendor profile not found for this user.' },
+        { status: 404 }
+      );
     }
 
     // 2. Fetch active subscribers for this vendor
@@ -205,17 +187,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireRole('vendor');
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
+
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const serviceClient = createServiceClient();
 
     // Verify vendor
@@ -225,18 +201,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    let vendor = initialVendor;
-
-    if (!vendor) {
-      const { data: fallbackVendor } = await serviceClient
-        .from('vendors')
-        .select('id, business_name')
-        .eq('is_active', true)
-        .order('rating', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      vendor = fallbackVendor;
-    }
+    const vendor = initialVendor;
 
     if (!vendor) {
       return NextResponse.json({ error: 'Vendor profile not found.' }, { status: 403 });

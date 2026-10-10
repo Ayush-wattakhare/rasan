@@ -9,7 +9,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/lib/hooks/use-toast';
 
 interface User {
@@ -24,6 +23,25 @@ interface UserActionsProps {
   user: User;
 }
 
+// Goes through the admin API: profiles can't be changed from the browser.
+async function updateUserStatus(
+  userId: string,
+  update: { is_active?: boolean; is_verified?: boolean }
+): Promise<{ message: string } | null> {
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    if (res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return { message: data.error || 'Failed to update user' };
+  } catch {
+    return { message: 'Network error' };
+  }
+}
+
 export default function UserActions({ user }: UserActionsProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -31,12 +49,7 @@ export default function UserActions({ user }: UserActionsProps) {
 
   const toggleStatus = async () => {
     setLoading(true);
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: !user.is_active })
-      .eq('id', user.id);
+    const error = await updateUserStatus(user.id, { is_active: !user.is_active });
 
     if (error) {
       toast({
@@ -56,12 +69,7 @@ export default function UserActions({ user }: UserActionsProps) {
 
   const toggleVerification = async () => {
     setLoading(true);
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_verified: !user.is_verified })
-      .eq('id', user.id);
+    const error = await updateUserStatus(user.id, { is_verified: !user.is_verified });
 
     if (error) {
       toast({

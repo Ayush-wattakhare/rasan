@@ -1,112 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth/guards';
+import { claimOrderForPartner } from '@/lib/orders/transition';
 
+const MAX_BATCH = 5;
+
+/**
+ * Rider accepts (and picks up) one or more ready orders.
+ * The rider is always the caller; any partner id in the body is ignored.
+ */
 export async function POST(request: NextRequest) {
+  const auth = await requireRole('delivery');
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const serviceClient = createServiceClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
-    const { orderId, orderIds: rawOrderIds, deliveryPartnerId: explicitPartnerId } = body;
+    const { orderId, orderIds: rawOrderIds } = body ?? {};
 
-    const targetOrderIds: string[] = Array.isArray(rawOrderIds) && rawOrderIds.length > 0
+    const requested: string[] = Array.isArray(rawOrderIds) && rawOrderIds.length > 0
       ? rawOrderIds
       : orderId
       ? [orderId]
       : [];
 
-    if (targetOrderIds.length === 0) {
+    const orderIds = Array.from(new Set(requested.filter((id) => typeof id === 'string'))).slice(0, MAX_BATCH);
+    if (orderIds.length === 0) {
       return NextResponse.json({ error: 'At least one Order ID is required' }, { status: 400 });
     }
 
-    // Limit maximum batch size to 5 orders
-    const orderIds = targetOrderIds.slice(0, 5);
+    const accepted: string[] = [];
+    const failed: { orderId: string; error: string }[] = [];
 
-    // Get delivery partner ID
-    let deliveryPartnerId = explicitPartnerId;
-    if (!deliveryPartnerId) {
-      const { data: partner } = await serviceClient
-        .from('delivery_partners')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      deliveryPartnerId = partner?.id;
-    }
-
-    if (!deliveryPartnerId) {
-      return NextResponse.json(
-        { error: 'Delivery partner record not found' },
-        { status: 404 }
-      );
-    }
-
-    const nowIso = new Date().toISOString();
-
-    // Process all orders in the batch
     for (const id of orderIds) {
-      const { data: order } = await serviceClient
-        .from('orders')
-        .select('id, customer_id, tracking_updates')
-        .eq('id', id)
-        .single();
+      const result = await claimOrderForPartner({ orderId: id, userId: auth.user.id });
+      if (result.ok) accepted.push(id);
+      else failed.push({ orderId: id, error: result.error });
+    }
 
-      if (order) {
-        const existingUpdates = Array.isArray(order.tracking_updates) ? order.tracking_updates : [];
-        const updatedTracking = [
-          ...existingUpdates,
-          {
-            status: 'picked_up' as const,
-            timestamp: nowIso,
-            message: 'Delivery partner has accepted the order and picked it up from the kitchen.',
-          },
-        ];
-
-        await serviceClient
-          .from('orders')
-          .update({
-            delivery_partner_id: deliveryPartnerId,
-            status: 'picked_up',
-            tracking_updates: updatedTracking as any,
-            updated_at: nowIso,
-          })
-          .eq('id', id);
-
-        // Notify customer
-        if (order.customer_id) {
-          try {
-            await serviceClient.from('notifications').insert({
-              user_id: order.customer_id,
-              type: 'delivery',
-              title: '🛵 Order Assigned to Rider!',
-              message: `Your tiffin for Order #${id.slice(0, 8)} is accepted by rider Rohan and heading to your location.`,
-              is_read: false,
-            });
-          } catch {}
-        }
-      }
+    if (accepted.length === 0) {
+      return NextResponse.json(
+        { error: failed[0]?.error || 'Could not accept order', failed },
+        { status: 409 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: `Successfully accepted ${orderIds.length} order(s)`,
-      acceptedCount: orderIds.length,
-      orderIds,
+      message: `Successfully accepted ${accepted.length} order(s)`,
+      acceptedCount: accepted.length,
+      orderIds: accepted,
+      failed,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Accept order unexpected error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

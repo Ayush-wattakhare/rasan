@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { getRiderFeed } from '@/lib/delivery/rider-feed';
 import DeliveryDashboardMain from './delivery-dashboard-main';
 
 export const dynamic = 'force-dynamic';
@@ -35,98 +36,18 @@ export default async function DeliveryDashboardPage() {
     .eq('user_id', user.id)
     .limit(1);
 
-  let deliveryPartner = existingPartners?.[0] || null;
+  const deliveryPartner = existingPartners?.[0] || null;
 
+  // Riders are created through the application form and verified by an admin.
   if (!deliveryPartner) {
-    const { data: newPartner } = await serviceClient
-      .from('delivery_partners')
-      .insert({
-        user_id: user.id,
-        vehicle_type: 'bike',
-        vehicle_number: 'MH 14 DA 2024',
-        license_number: 'MH14-2022-0098765',
-        is_online: true,
-        is_verified: true,
-        rating: 4.9,
-        total_deliveries: 48,
-        earnings: {
-          today: 450,
-          this_week: 2850,
-          this_month: 11200,
-          total: 34500,
-        },
-      })
-      .select()
-      .single();
-
-    deliveryPartner = newPartner;
-  } else if (!deliveryPartner.is_verified) {
-    const { data: verifiedPartner } = await serviceClient
-      .from('delivery_partners')
-      .update({ is_verified: true, is_online: true })
-      .eq('id', deliveryPartner.id)
-      .select()
-      .single();
-
-    deliveryPartner = verifiedPartner || deliveryPartner;
+    redirect('/become-delivery-partner');
   }
 
-  if (!deliveryPartner) {
-    redirect('/login');
-  }
+
 
   const partnerId = deliveryPartner.id;
 
-  // Fetch real orders
-  const { data: allOrders } = await serviceClient
-    .from('orders')
-    .select('*')
-    .gte('created_at', '2026-08-01T00:00:00Z')
-    .order('created_at', { ascending: false });
-
-  const { data: vendorsList } = await serviceClient
-    .from('vendors')
-    .select('id, business_name, address, phone, location');
-
-  const { data: profilesList } = await serviceClient
-    .from('profiles')
-    .select('id, name, phone');
-
-  const vendorMap = new Map((vendorsList || []).map((v) => [v.id, v]));
-  const profileMap = new Map((profilesList || []).map((p) => [p.id, p]));
-
-  const formattedOrders = (allOrders || []).map((order) => {
-    const matchedVendor = vendorMap.get(order.vendor_id);
-    const matchedCustomer = profileMap.get(order.customer_id);
-    return {
-      ...order,
-      delivery_fee: order.delivery_fee || 40,
-      profiles: matchedCustomer || {
-        name: 'Customer (Pimpri)',
-        phone: '+91 98220 12345',
-      },
-      vendors: matchedVendor || {
-        business_name: "Anita's Home Kitchen",
-        address: 'Pimpri Colony, Pimpri-Chinchwad, Pune',
-        phone: '+91 98765 43210',
-        location: { coordinates: [73.8009, 18.6279] },
-      },
-    };
-  });
-
-  // Active deliveries: assigned to this partner and currently being delivered
-  const activeDeliveries = formattedOrders.filter(
-    (o) =>
-      o.delivery_partner_id === partnerId &&
-      ['picked_up', 'out_for_delivery'].includes(o.status)
-  );
-
-  // Available orders: ONLY orders where vendor has finished cooking and marked READY, waiting for delivery partner
-  const availableOrders = formattedOrders.filter(
-    (o) =>
-      (!o.delivery_partner_id || o.delivery_partner_id === null) &&
-      ['ready', 'ready_for_pickup'].includes(o.status)
-  );
+  const { activeDeliveries, availableOrders } = await getRiderFeed(deliveryPartner);
 
   const today = new Date().toISOString().split('T')[0];
   const { data: todayDeliveries } = await serviceClient
@@ -139,8 +60,8 @@ export default async function DeliveryDashboardPage() {
 
   const todayEarnings =
     todayDeliveries && todayDeliveries.length > 0
-      ? todayDeliveries.reduce((sum, order) => sum + (order.delivery_fee || 40), 0)
-      : 450;
+      ? todayDeliveries.reduce((sum, order) => sum + (Number(order.delivery_fee) || 0), 0)
+      : 0;
 
   return (
     <DeliveryDashboardMain

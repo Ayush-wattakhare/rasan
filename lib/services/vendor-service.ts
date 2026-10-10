@@ -4,6 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PUBLIC_VENDOR_COLUMNS } from '@/lib/supabase/public-columns';
 import type { Database } from '@/types/database.types';
 
 type SupabaseClientType = SupabaseClient<Database>;
@@ -27,7 +28,7 @@ export async function getVendors(
 ) {
   let query = supabase
     .from('vendors')
-    .select('*', { count: 'exact' })
+    .select(PUBLIC_VENDOR_COLUMNS, { count: 'exact' })
     .eq('is_active', true);
 
   // Apply cuisine filter
@@ -98,7 +99,7 @@ export async function getVendorById(
 ) {
   const { data, error } = await supabase
     .from('vendors')
-    .select('*')
+    .select(PUBLIC_VENDOR_COLUMNS)
     .eq('id', vendorId)
     .single();
 

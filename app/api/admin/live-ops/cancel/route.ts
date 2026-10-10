@@ -33,17 +33,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Update order status to cancelled
-    const { error: updateError } = await serviceClient
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      return NextResponse.json({ error: `Order is already ${order.status}` }, { status: 409 });
+    }
+
+    // A refund is only possible for money actually received, and never above the order total.
+    const wasPaid = order.payment_status === 'paid';
+    const requestedRefund = Number(refundAmount ?? order.total);
+    const refund = refundCustomer && wasPaid
+      ? Math.min(Math.max(Number.isFinite(requestedRefund) ? requestedRefund : 0, 0), Number(order.total))
+      : 0;
+
+    // Conditional on the current status so a concurrent transition isn't overwritten.
+    const { data: cancelled, error: updateError } = await serviceClient
       .from('orders')
       .update({
         status: 'cancelled',
+        ...(refund > 0 ? { payment_status: 'refunded' as const } : {}),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', order.status)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      console.error('Live-ops cancel error:', updateError);
+      return NextResponse.json({ error: 'Failed to cancel order' }, { status: 500 });
+    }
+    if (!cancelled) {
+      return NextResponse.json({ error: 'Order status changed. Please refresh.' }, { status: 409 });
     }
 
     // Send notifications to Customer, Vendor, and Rider
@@ -53,7 +72,7 @@ export async function POST(request: NextRequest) {
           user_id: order.customer_id,
           type: 'order',
           title: 'Order Cancelled by Dispatch',
-          message: `Order #${order.id.slice(0, 8)} has been cancelled. Reason: ${reason || 'Operational cancellation'}. ${refundCustomer ? `Refund of ₹${refundAmount || order.total} initiated.` : ''}`,
+          message: `Order #${order.id.slice(0, 8)} has been cancelled. Reason: ${reason || 'Operational cancellation'}. ${refund > 0 ? `Refund of ₹${refund} initiated.` : ''}`,
           is_read: false,
         });
       }
@@ -63,10 +82,11 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Order #${order.id.slice(0, 8)} cancelled successfully. Fault: ${faultAttribution || 'General'}.`,
       orderId,
-      refundIssued: !!refundCustomer,
-      refundAmount: refundCustomer ? (refundAmount || order.total) : 0,
+      refundIssued: refund > 0,
+      refundAmount: refund,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Live-ops cancel error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

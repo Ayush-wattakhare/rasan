@@ -43,8 +43,8 @@ jest.mock('@/lib/supabase/client', () => ({
   })),
 }))
 
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
+// Mock window.matchMedia (skipped in `@jest-environment node` suites)
+if (typeof window !== 'undefined') Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: jest.fn().mockImplementation(query => ({
     matches: false,

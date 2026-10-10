@@ -39,16 +39,8 @@ export async function POST(request: Request) {
         license_number,
         documents,
         bank_details,
-        is_online: false,
-        is_verified: false,
-        rating: 0,
-        total_deliveries: 0,
-        earnings: {
-          today: 0,
-          this_week: 0,
-          this_month: 0,
-          total: 0,
-        },
+        // is_online, is_verified, rating, total_deliveries and earnings use
+        // database defaults (offline, unverified, zero) and can't be set by users.
       })
       .select()
       .single();

@@ -136,13 +136,13 @@ export function RedeemModal({
         id: `PAY-${Date.now().toString().slice(-6)}`,
         amount: numAmount,
         method,
-        status: 'completed',
+        status: 'pending',
         timestamp: new Date().toISOString(),
       });
 
       toast({
-        title: '🎉 Payout Initiated!',
-        description: `₹${numAmount.toLocaleString('en-IN')} has been transferred to your ${method.toUpperCase()}.`,
+        title: '🎉 Payout Requested!',
+        description: `₹${numAmount.toLocaleString('en-IN')} will be sent to your ${method.toUpperCase()} once processed.`,
       });
 
       if (onSuccess) {
@@ -210,16 +210,16 @@ export function RedeemModal({
             </div>
             <div className="space-y-1">
               <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tight">
-                Transfer Successful!
+                Payout Requested
               </h3>
               <p className="text-xs text-gray-500 font-medium">
-                Ref ID: <strong className="font-mono text-gray-800">{payoutResult.id || payoutResult.reference_id || 'TXN-98412'}</strong>
+                Ref ID: <strong className="font-mono text-gray-800">{payoutResult.id || payoutResult.reference_id}</strong>
               </p>
             </div>
 
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-left space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-gray-500">Amount Transferred:</span>
+                <span className="text-gray-500">Amount Requested:</span>
                 <span className="font-black text-gray-900">₹{numAmount.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">

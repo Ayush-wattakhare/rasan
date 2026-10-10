@@ -4,6 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PUBLIC_VENDOR_COLUMNS } from '@/lib/supabase/public-columns';
 import type { Database } from '@/types/database.types';
 import type { MealType } from '@/types';
 
@@ -141,7 +142,7 @@ export async function getMealById(
 ) {
   const { data, error } = await supabase
     .from('meals')
-    .select('*, vendors(*)')
+    .select(`*, vendors(${PUBLIC_VENDOR_COLUMNS})`)
     .eq('id', mealId)
     .single();
 
