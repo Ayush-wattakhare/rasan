@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
 import { WEEKDAYS, calculateCartTotals, getItemPricing } from '@/lib/pricing/order-pricing';
-import { generateDeliveryOtp } from '@/lib/utils/delivery-otp-server';
+import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
 import type { PaymentMethod, SubscriptionType } from '@/types';
 
 const PAYMENT_METHODS: readonly PaymentMethod[] = ['cash', 'card', 'upi', 'wallet'];
@@ -146,10 +147,7 @@ export async function POST(request: NextRequest) {
         // Cash orders go straight to the kitchen; online orders wait for payment verification.
         status: isCash ? 'confirmed' : 'pending',
         payment_status: 'pending',
-        delivery_address: {
-          ...deliveryAddress,
-          delivery_otp: generateDeliveryOtp(),
-        } as any,
+        delivery_address: deliveryAddress as any,
         delivery_instructions:
           typeof body.delivery_instructions === 'string'
             ? body.delivery_instructions.slice(0, 500)
@@ -158,8 +156,14 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) {
+    if (error || !order) {
       console.error('Order creation error:', error);
+      return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
+    }
+
+    // Handover PIN, readable only by this customer (order_handover_codes).
+    if (!(await createHandoverCode(order.id))) {
+      await serviceClient.from('orders').delete().eq('id', order.id);
       return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
     }
 
@@ -195,7 +199,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('orders')
-      .select('*')
+      .select(`*, ${HANDOVER_EMBED}`)
       .eq('customer_id', user.id)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

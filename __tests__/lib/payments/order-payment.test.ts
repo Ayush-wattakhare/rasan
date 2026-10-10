@@ -3,7 +3,7 @@
  */
 import { createHmac } from 'crypto';
 import { hmacSha256Hex, signaturesMatch, toMinorUnits } from '@/lib/payments/order-payment';
-import { generateDeliveryOtp, verifyDeliveryOtp } from '@/lib/utils/delivery-otp-server';
+import { codesMatch, generateDeliveryOtp } from '@/lib/utils/delivery-otp-server';
 import { getDeliveryOtp, withoutDeliveryOtp } from '@/lib/utils/delivery-otp';
 
 jest.mock('@/lib/supabase/server', () => ({ createServiceClient: jest.fn() }));
@@ -42,22 +42,33 @@ describe('delivery OTP', () => {
     }
   });
 
-  it('verifies only the stored PIN', () => {
-    const order = { delivery_address: { delivery_otp: '4821' } };
-    expect(verifyDeliveryOtp(order, '4821')).toBe(true);
-    expect(verifyDeliveryOtp(order, ' 4821 ')).toBe(true);
-    expect(verifyDeliveryOtp(order, '1234')).toBe(false);
+  it('accepts only the stored code', () => {
+    expect(codesMatch('4821', '4821')).toBe(true);
+    expect(codesMatch('4821', ' 4821 ')).toBe(true);
+    expect(codesMatch('4821', '1234')).toBe(false);
+    expect(codesMatch('4821', 4821)).toBe(true);
   });
 
-  it('has no derived fallback when no PIN is stored', () => {
+  it('has no derived fallback when no code is stored', () => {
     const order = { id: 'abc', order_number: 'ORD-20261010-1234', delivery_address: {} } as any;
     expect(getDeliveryOtp(order)).toBeNull();
-    expect(verifyDeliveryOtp(order, '1234')).toBe(false);
+    expect(codesMatch(null, '1234')).toBe(false);
   });
 
-  it('strips the PIN before orders are shared with riders or kitchens', () => {
-    const order = { id: '1', delivery_address: { street: 'MG Road', delivery_otp: '4821' } };
-    const shared = withoutDeliveryOtp(order);
+  it('reads the customer-only handover embed', () => {
+    expect(getDeliveryOtp({ handover: { code: '4821' } })).toBe('4821');
+    expect(getDeliveryOtp({ handover: [{ code: '4821' }] })).toBe('4821');
+    expect(getDeliveryOtp({ handover: null })).toBeNull();
+  });
+
+  it('strips handover data before orders are shared with riders or kitchens', () => {
+    const order = {
+      id: '1',
+      handover: { code: '4821' },
+      delivery_address: { street: 'MG Road', delivery_otp: '4821' },
+    };
+    const shared = withoutDeliveryOtp(order) as any;
+    expect(shared.handover).toBeUndefined();
     expect(shared.delivery_address).toEqual({ street: 'MG Road' });
     expect(order.delivery_address.delivery_otp).toBe('4821');
   });

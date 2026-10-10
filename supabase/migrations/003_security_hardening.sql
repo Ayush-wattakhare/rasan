@@ -76,6 +76,9 @@ WHERE p.id = u.id;
 -- ---------------------------------------------------------------------------
 -- 3. vendors: owners edit storefront fields; activation requires admin approval
 -- ---------------------------------------------------------------------------
+-- New kitchens are unlisted until approved (all server inserts set is_active explicitly).
+ALTER TABLE vendors ALTER COLUMN is_active SET DEFAULT false;
+
 REVOKE INSERT, UPDATE ON vendors FROM anon, authenticated;
 GRANT INSERT (user_id, business_name, description, cuisine, location, address, phone, email,
               operating_hours, documents)
@@ -345,5 +348,79 @@ REVOKE EXECUTE ON FUNCTION request_payout(UUID, TEXT, NUMERIC, TEXT, JSONB, NUME
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION request_payout(UUID, TEXT, NUMERIC, TEXT, JSONB, NUMERIC)
   TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 9. Read access: private data is visible to its owner and admins only
+-- ---------------------------------------------------------------------------
+-- SECURITY DEFINER so policies on profiles can call it without recursing.
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin');
+$$;
+
+REVOKE EXECUTE ON FUNCTION is_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION is_admin() TO authenticated, service_role;
+
+-- profiles held email, phone and address and were readable by anyone.
+DROP POLICY IF EXISTS "Anyone can view active profiles" ON profiles;
+DROP POLICY IF EXISTS "Admins can view all profiles" ON profiles;
+CREATE POLICY "Admins can view all profiles"
+  ON profiles FOR SELECT
+  USING (is_admin());
+
+-- delivery_partners held bank details and ID documents and were readable by anyone.
+DROP POLICY IF EXISTS "Anyone can view verified delivery partners" ON delivery_partners;
+DROP POLICY IF EXISTS "Delivery partners can view their own data" ON delivery_partners;
+CREATE POLICY "Delivery partners can view their own data"
+  ON delivery_partners FOR SELECT
+  USING (user_id = auth.uid() OR is_admin());
+
+-- vendors stay publicly listable, but bank details and documents are not readable
+-- by end users at all (server routes use the service role for those columns).
+DROP POLICY IF EXISTS "Vendors can view their own data" ON vendors;
+CREATE POLICY "Vendors can view their own data"
+  ON vendors FOR SELECT
+  USING (user_id = auth.uid() OR is_admin());
+
+REVOKE SELECT ON vendors FROM anon, authenticated;
+GRANT SELECT (id, user_id, business_name, description, cuisine, location, address, phone,
+              email, operating_hours, rating, total_orders, is_active, created_at, updated_at)
+  ON vendors TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 10. Delivery handover codes: readable only by the ordering customer
+--     (previously stored in orders.delivery_address, which kitchens and riders can read)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS order_handover_codes (
+  order_id UUID PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
+  code TEXT NOT NULL CHECK (code ~ '^[0-9]{4}$'),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE order_handover_codes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON order_handover_codes FROM anon, authenticated;
+GRANT SELECT ON order_handover_codes TO authenticated;
+
+DROP POLICY IF EXISTS "Customers can view their order handover code" ON order_handover_codes;
+CREATE POLICY "Customers can view their order handover code"
+  ON order_handover_codes FOR SELECT
+  USING (EXISTS (SELECT 1 FROM orders o WHERE o.id = order_id AND o.customer_id = auth.uid()));
+
+-- Move existing codes out of delivery_address
+INSERT INTO order_handover_codes (order_id, code)
+SELECT id, delivery_address->>'delivery_otp'
+FROM orders
+WHERE delivery_address ? 'delivery_otp'
+  AND (delivery_address->>'delivery_otp') ~ '^[0-9]{4}$'
+ON CONFLICT (order_id) DO NOTHING;
+
+UPDATE orders
+SET delivery_address = delivery_address - 'delivery_otp'
+WHERE delivery_address ? 'delivery_otp';
 
 COMMIT;

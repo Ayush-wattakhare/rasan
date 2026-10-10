@@ -1,6 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import { canTransition, normalizeOrderStatus, type OrderActor } from '@/lib/utils/order-transitions';
-import { verifyDeliveryOtp } from '@/lib/utils/delivery-otp-server';
+import { verifyHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { rateLimit } from '@/lib/utils/rate-limit';
 import type { OrderStatus, UserRole } from '@/types';
 
@@ -103,7 +103,7 @@ export async function transitionOrder(params: {
   const { data: order } = await serviceClient
     .from('orders')
     .select(
-      'id, status, customer_id, vendor_id, delivery_partner_id, tracking_updates, delivery_fee, payment_method, payment_status, delivery_address'
+      'id, status, customer_id, vendor_id, delivery_partner_id, tracking_updates, delivery_fee, payment_method, payment_status'
     )
     .eq('id', params.orderId)
     .maybeSingle();
@@ -136,7 +136,7 @@ export async function transitionOrder(params: {
     if (!attempts.success) {
       return failure(429, 'Too many PIN attempts. Please wait and try again, or contact support.');
     }
-    if (!verifyDeliveryOtp(order, String(params.otp))) {
+    if (!(await verifyHandoverCode(order.id, params.otp))) {
       return failure(
         400,
         'Incorrect Delivery PIN. Please ask customer for the 4-digit security code shown on their tracking screen.'

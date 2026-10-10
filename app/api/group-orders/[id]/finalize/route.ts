@@ -1,5 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { generateDeliveryOtp } from '@/lib/utils/delivery-otp-server';
+import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -141,22 +141,20 @@ export async function POST(
         status: 'pending',
         payment_status: 'pending',
         payment_method: 'cash',
-        delivery_address: {
-          ...((hostProfile?.address as any) || {
-            street: '',
-            city: '',
-            state: '',
-            zip_code: '',
-            coordinates: { lat: 0, lng: 0 },
-          }),
-          delivery_otp: generateDeliveryOtp(),
+        delivery_address: (hostProfile?.address as any) || {
+          street: '',
+          city: '',
+          state: '',
+          zip_code: '',
+          coordinates: { lat: 0, lng: 0 },
         },
       } as any)
       .select()
       .single();
 
-    if (orderError) {
+    if (orderError || !order || !(await createHandoverCode(order.id))) {
       console.error('Error creating order:', orderError);
+      if (order) await serviceClient.from('orders').delete().eq('id', order.id);
       await supabase.from('group_orders').update({ status: 'open' }).eq('id', id);
       return NextResponse.json(
         { error: 'Failed to create order' },

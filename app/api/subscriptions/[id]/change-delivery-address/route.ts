@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -77,7 +77,7 @@ export async function POST(
     }
 
     // Send notification
-    await supabase.from('notifications').insert({
+    await createServiceClient().from('notifications').insert({
       user_id: user.id,
       type: 'system',
       title: 'Delivery Address Updated for Single Day',

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
 import { createClient } from '@/lib/supabase/server';
 
 interface RouteContext {
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const { data: order, error } = await supabase
       .from('orders')
-      .select('*')
+      .select(`*, ${HANDOVER_EMBED}`)
       .eq('id', id)
       .single();
 

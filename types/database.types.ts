@@ -672,6 +672,29 @@ export interface Database {
         };
         Relationships: [];
       };
+      order_handover_codes: {
+        Row: {
+          order_id: string;
+          code: string;
+          created_at: string;
+        };
+        Insert: {
+          order_id: string;
+          code: string;
+          created_at?: string;
+        };
+        Update: {
+          code?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'order_handover_codes_order_id_fkey';
+            columns: ['order_id'];
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
       payouts: {
         Row: {
           id: string;

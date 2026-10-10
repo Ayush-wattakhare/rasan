@@ -33,7 +33,6 @@ export async function GET(
   if (!auth.ok) return auth.response;
 
   try {
-    const supabase = await createClient();
     const { id } = await params;
 
     // Live location is visible to the rider, admins, and customers whose order
@@ -42,7 +41,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data: partner, error } = await supabase
+    const { data: partner, error } = await createServiceClient()
       .from('delivery_partners')
       .select('id, is_online, current_location, updated_at')
       .eq('id', id)
@@ -148,11 +147,15 @@ export async function PUT(
     }
 
     // Update location using PostGIS point
-    const { data: updated, error } = await (supabase.rpc as any)('update_delivery_partner_location', {
-      p_delivery_partner_id: id,
-      p_lat: lat,
-      p_lng: lng,
-    });
+    // (WKT POINT(lng lat); the rider may write current_location on their own row)
+    const { error } = await supabase
+      .from('delivery_partners')
+      .update({
+        current_location: `POINT(${lng} ${lat})` as any,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error updating delivery partner location:', error);

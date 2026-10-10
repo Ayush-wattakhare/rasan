@@ -1,34 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 
+/**
+ * Public reviews for a meal. Reviewer profiles are private (migration 003), so
+ * only the reviewer's name and avatar are returned, read with the service role.
+ */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = await createClient();
   const { id } = await params;
 
-  const { data: reviews, error } = await supabase
+  const { data: reviews, error } = await createServiceClient()
     .from('reviews')
     .select(`
-      *,
+      id, meal_id, order_id, rating, comment, images, created_at, updated_at,
       user:profiles(name, avatar_url)
     `)
     .eq('meal_id', id)
     .order('created_at', { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Reviews fetch error:', error);
+    return NextResponse.json({ error: 'Failed to load reviews' }, { status: 500 });
   }
 
-  // Calculate average rating
-  const averageRating = reviews.length > 0
-    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+  const list = reviews || [];
+  const averageRating = list.length > 0
+    ? list.reduce((sum, review) => sum + review.rating, 0) / list.length
     : 0;
 
   return NextResponse.json({
-    reviews,
+    reviews: list,
     averageRating,
-    totalReviews: reviews.length,
+    totalReviews: list.length,
   });
 }

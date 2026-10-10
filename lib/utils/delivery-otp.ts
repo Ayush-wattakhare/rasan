@@ -1,22 +1,27 @@
 /**
  * Delivery handover OTP (client-safe part).
- * Each order gets a random 4-digit PIN at creation, stored in
- * delivery_address.delivery_otp. There is no derived fallback: an order
- * without a stored PIN cannot be completed by OTP.
- * Generation and verification live in ./delivery-otp-server.ts.
+ * Codes are stored in `order_handover_codes`, readable only by the ordering
+ * customer. Customer queries embed it as `handover:order_handover_codes(code)`.
+ * There is no derived fallback PIN.
  */
-export function getDeliveryOtp(order: { delivery_address?: any } | null | undefined): string | null {
-  const otp = order?.delivery_address?.delivery_otp;
-  return otp ? String(otp).trim() : null;
+export const HANDOVER_EMBED = 'handover:order_handover_codes(code)';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getDeliveryOtp(order: any): string | null {
+  const handover = Array.isArray(order?.handover) ? order?.handover[0] : order?.handover;
+  return handover?.code ? String(handover.code) : null;
 }
 
 /**
- * Returns the order without the handover PIN. Use before sending orders to
- * anyone other than the customer (riders, kitchens).
+ * Returns the order without any handover code data. Use before sending orders
+ * to anyone other than the customer (riders, kitchens).
  */
-export function withoutDeliveryOtp<T extends { delivery_address?: any }>(order: T): T {
-  const address = order?.delivery_address;
-  if (!address || typeof address !== 'object') return order;
-  const { delivery_otp: _otp, ...rest } = address;
-  return { ...order, delivery_address: rest };
+export function withoutDeliveryOtp<T extends { delivery_address?: any; handover?: any }>(order: T): T {
+  const { handover: _handover, ...rest } = order as any;
+  const address = rest.delivery_address;
+  if (address && typeof address === 'object' && 'delivery_otp' in address) {
+    const { delivery_otp: _otp, ...cleanAddress } = address;
+    rest.delivery_address = cleanAddress;
+  }
+  return rest as T;
 }

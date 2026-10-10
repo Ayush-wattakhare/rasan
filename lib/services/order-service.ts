@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
 import type { Order, OrderFilters } from '@/lib/supabase/types';
 import type { Address, OrderItem, PaymentMethod, SubscriptionType } from '@/types';
 
@@ -43,7 +44,7 @@ export class OrderService {
   async getOrderById(orderId: string): Promise<Order | null> {
     const { data, error } = await this.supabase
       .from('orders')
-      .select('*')
+      .select(`*, ${HANDOVER_EMBED}`)
       .eq('id', orderId)
       .single();
 
@@ -55,7 +56,7 @@ export class OrderService {
    * Get orders with filters
    */
   async getOrders(filters: OrderFilters = {}) {
-    let query = this.supabase.from('orders').select('*');
+    let query = this.supabase.from('orders').select(`*, ${HANDOVER_EMBED}`);
 
     if (filters.customer_id) {
       query = query.eq('customer_id', filters.customer_id);
