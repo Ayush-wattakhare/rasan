@@ -66,51 +66,83 @@ export default async function CustomerDashboard() {
   const hasActiveSubscription = !!customerSub && customerSub.status === 'active';
   const activeVendorId = hasActiveSubscription ? (customerSub?.vendors?.id || customerSub?.vendor_id) : null;
   const activeVendorName = customerSub?.vendors?.business_name || 'Your Chef';
+  const customerName = profile?.name?.split(' ')[0] || profile?.email?.split('@')[0] || 'Foodie';
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">
-      {/* Sleek Dashboard Header - Compact half-screen height */}
-      <div className="relative overflow-hidden bg-[#1A1A1A] py-8 md:py-12 lg:py-14">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-orange-500/10 rounded-full blur-[120px] -mr-64 -mt-64 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-red-500/5 rounded-full blur-[80px] -ml-32 -mb-32"></div>
+      {/* Sleek, Compact Food Dashboard Header (< 140px vertical height) */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-[#1A1A1A] via-[#241E1C] to-[#1A1A1A] border-b border-white/5 py-4 md:py-6">
+        <div className="absolute top-0 right-0 w-72 h-72 bg-orange-500/10 rounded-full blur-[90px] -mr-20 -mt-20 pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px] -ml-20 -mb-20 pointer-events-none"></div>
         
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="max-w-3xl space-y-4">
-             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                <span className="text-base">👋</span>
-                <span className="text-[0.65rem] font-black text-white uppercase tracking-[0.25em] italic">
-                  Systems Online: {profile?.email?.split('@')[0] || 'Gourmet'}
-                </span>
-             </div>
+        <div className="container mx-auto px-4 relative z-10 max-w-7xl">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Left greeting & actions */}
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-400 text-[11px] font-bold">
+                <span>🍲</span>
+                <span>Authentic Home Kitchens • Fresh Daily</span>
+              </div>
 
-             <div className="space-y-2">
-               <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-white tracking-tighter leading-none uppercase italic">
-                 REDEFINE <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-600">DAILY TASTE</span>
-               </h1>
-               <p className="text-xs md:text-sm text-gray-400 max-w-xl font-medium leading-relaxed">
-                 High-performance home cooking delivered with hyperlocal precision.
-               </p>
-             </div>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+                Craving homemade food, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300 capitalize">{customerName}</span>? 👋
+              </h1>
+              <p className="text-xs md:text-sm text-gray-300 font-medium max-w-xl">
+                Fresh tiffins, authentic regional curries & wholesome daily meals prepared by certified local home chefs.
+              </p>
 
-             <div className="flex flex-wrap gap-3 pt-2">
+              <div className="flex items-center gap-2.5 pt-1.5">
                 <Link href="/subscriptions">
-                    <Button size="default" className="bg-orange-600 hover:bg-[#FDFCFB] hover:text-[#1A1A1A] text-white font-black uppercase tracking-[0.15em] px-6 h-11 md:h-12 rounded-xl shadow-lg transition-all duration-300 border-none group cursor-pointer text-xs">
-                        Unlock Premium Plans
-                        <Sparkles className="ml-1.5 w-4 h-4 group-hover:rotate-45 transition-transform" />
-                    </Button>
+                  <Button size="sm" className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3.5 h-8 md:h-9 rounded-xl text-xs shadow-md transition-all cursor-pointer">
+                    🍱 {hasActiveSubscription ? 'My Subscription' : 'Explore Tiffin Plans'}
+                    <Sparkles className="ml-1 w-3.5 h-3.5" />
+                  </Button>
                 </Link>
                 <Link href="/meals">
-                    <Button variant="outline" size="default" className="bg-transparent border-white/20 text-white hover:bg-white/5 font-black uppercase tracking-[0.15em] px-6 h-11 md:h-12 rounded-xl transition-all duration-300 text-xs cursor-pointer">
-                        Explore Recipes
-                    </Button>
+                  <Button variant="outline" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-medium px-3.5 h-8 md:h-9 rounded-xl text-xs cursor-pointer">
+                    🍛 Browse All Dishes
+                  </Button>
                 </Link>
-             </div>
+              </div>
+            </div>
+
+            {/* Right quick status widget */}
+            {hasActiveSubscription ? (
+              <div className="hidden lg:flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-md shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center text-xl shrink-0">
+                  🥗
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span className="text-orange-400 font-bold uppercase tracking-wider text-[10px]">Active Tiffin Plan</span>
+                  </div>
+                  <p className="text-white font-bold truncate max-w-[160px]">{activeVendorName}</p>
+                  <Link href="/subscriptions" className="text-gray-300 hover:text-white text-[11px] underline">
+                    Manage Schedule →
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3.5 backdrop-blur-md shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-xl text-white shadow-sm shrink-0">
+                  ⭐
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <p className="text-amber-400 font-bold uppercase tracking-wider text-[10px]">Weekly Tiffin Club</p>
+                  <p className="text-white font-bold">From ₹99 / meal</p>
+                  <Link href="/subscriptions" className="text-orange-400 hover:text-orange-300 text-[11px] font-semibold underline">
+                    Unlock Tiffins →
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 md:py-8 max-w-7xl -mt-6 md:-mt-8 relative z-20 space-y-10">
-        {/* Unified Search Experience */}
+      <div className="container mx-auto px-4 py-5 md:py-6 max-w-7xl relative z-20 space-y-8 pb-32">
+        {/* Unified Search Experience & Quick Categories */}
         <CustomerSearch />
 
         {/* Live Kitchen Circle & Tomorrow's Menu Broadcast Hub - Exclusively for Active Subscribers */}
@@ -122,21 +154,21 @@ export default async function CustomerDashboard() {
           />
         )}
 
-        {/* Curated Recommendations */}
-        <div className="space-y-12">
-          <div className="flex items-end justify-between border-b-2 border-gray-50 pb-8">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                 <div className="w-6 h-6 rounded-md bg-orange-100 flex items-center justify-center text-[0.6rem] shadow-sm">⭐</div>
-                 <p className="text-[0.7rem] font-black text-orange-600 uppercase tracking-[0.4em] italic">Top Tier Selection</p>
+        {/* Curated Recommendations - Directly visible above the fold */}
+        <div className="space-y-6">
+          <div className="flex items-end justify-between border-b border-gray-100 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-md bg-orange-100 flex items-center justify-center text-[0.65rem] shadow-xs">⭐</div>
+                <p className="text-[0.68rem] font-black text-orange-600 uppercase tracking-[0.25em]">Top Rated Selection</p>
               </div>
-              <h2 className="text-4xl md:text-5xl font-black text-[#1A1A1A] tracking-tighter italic leading-none uppercase">
-                Trending <span className="text-gray-200">/ Kitchens</span>
+              <h2 className="text-2xl md:text-3xl font-black text-[#1A1A1A] tracking-tight">
+                Trending <span className="text-orange-600">Dishes & Kitchens</span>
               </h2>
             </div>
-            <Link href="/meals" className="group flex items-center gap-3 text-[0.65rem] font-black uppercase tracking-[0.3em] text-gray-400 hover:text-orange-600 transition-all pb-2">
-              Explore Universal Menu
-              <span className="group-hover:translate-x-2 transition-transform">→</span>
+            <Link href="/meals" className="group flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-orange-600 transition-colors pb-1">
+              <span>View Full Menu</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
             </Link>
           </div>
 
@@ -144,10 +176,10 @@ export default async function CustomerDashboard() {
             /* Fixed the Grid Issue: Pass the whole list to TopMealsSection */
             <TopMealsSection meals={topMeals as any} />
           ) : (
-            <div className="bg-white rounded-[3rem] p-32 text-center border-2 border-dashed border-gray-100">
-               <ShoppingBag className="w-20 h-20 mx-auto mb-6 text-gray-100" />
-               <h3 className="text-2xl font-black text-gray-900 uppercase italic">Curating Excellence...</h3>
-               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-4 max-w-sm mx-auto leading-relaxed">Our master chefs are currently establishing their supply lines. Check back in a few minutes.</p>
+            <div className="bg-white rounded-3xl p-16 text-center border-2 border-dashed border-gray-100">
+               <ShoppingBag className="w-16 h-16 mx-auto mb-4 text-gray-200" />
+               <h3 className="text-xl font-black text-gray-900 uppercase">Curating Excellence...</h3>
+               <p className="text-xs font-medium text-gray-400 mt-2 max-w-sm mx-auto">Our master chefs are currently establishing their supply lines. Check back shortly.</p>
             </div>
           )}
         </div>
