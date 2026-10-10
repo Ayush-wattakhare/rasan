@@ -123,7 +123,7 @@ CREATE TRIGGER guard_vendor_activation_trigger
 -- 4. delivery_partners: riders edit availability/vehicle only; never earnings or verification
 -- ---------------------------------------------------------------------------
 REVOKE INSERT, UPDATE ON delivery_partners FROM anon, authenticated;
-GRANT INSERT (user_id, vehicle_type, vehicle_number, license_number, documents)
+GRANT INSERT (user_id, vehicle_type, vehicle_number, license_number, documents, bank_details)
   ON delivery_partners TO authenticated;
 GRANT UPDATE (is_online, current_location, vehicle_type, vehicle_number, license_number,
               documents, bank_details, updated_at)
