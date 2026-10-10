@@ -18,7 +18,7 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
 | 7 | Delivery | ✅ | Rider status route uses `transitionOrder()` (assignment + OTP, 5 attempts / 15 min). Shared `claimOrderForPartner()` for both accept routes (verified rider, ready + unassigned, paid or COD, race-safe). Rider feed (API + dashboard page) shows only own active + ready orders, no OTPs, customer contact only when assigned. Payouts via `request_payout()` with balance check, recorded as pending. Live location limited to rider / admin / customer being delivered to. Pages no longer auto-create verified riders. |
 | 8 | Vendor / catalog / subscriptions / uploads | ✅ | Vendor status routes use `transitionOrder()`; vendor order feed strips OTP. Subscriptions priced server-side (from the checkout order, or plan table), dates bounded, one per order (`subscriptions.order_id` added to migration 003); PUT allow-listed. Broadcast fallback removed. Reviews only for own delivered orders, rating goes to the order's kitchen. Meal PATCH allow-listed, no self-set ratings, public listing shows available meals only. Community feed: owner-only chef posts, subscriber/owner-only reads, no demo vendor IDs. Uploads: JPEG/PNG/WebP(/GIF), type-derived extension, fixed folders, no overwrite. Vendor pages no longer auto-create vendors; payouts page uses the 7% constant and subtracts requested payouts. Subscriptions page no longer extends expired plans. |
 | 9 | Tests | ✅ | 6 new suites, 64 new tests: role map / app_metadata-only roles, safe redirects, order transitions, order + subscription pricing, payment signatures + OTP (incl. no fallback, PIN stripping), dev-tools + setup-secret guards. Total 109 tests pass. |
-| 10 | Docs reorganisation | ⬜ | |
+| 10 | Docs reorganisation | ✅ | Root now holds only README / AGENTS / CLAUDE. 34 old docs removed (17 stale progress logs, the rest merged). New `docs/` tree: getting-started, development, architecture, database, operations, audit. README rewritten (7% commission, real env vars, migration warning). All relative links checked. |
 | 11 | Final verification | ⬜ | |
 
 ## Findings tracker
@@ -32,7 +32,7 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
 | E. Orders & payments | E1–E9 | ✅ |
 | F. Delivery | F1–F6 | ✅ |
 | G. Vendor etc. | G1–G11 | ✅ |
-| H. Consistency & docs | H1 ✅ · H2 ⬜ |
+| H. Consistency & docs | H1–H2 ✅ |
 | I. Pages / browser bypass | I1–I6 ✅ |
 
 ## Verification log
