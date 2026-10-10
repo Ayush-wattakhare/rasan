@@ -19,6 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { DeliveryOtpModal } from '@/components/delivery/delivery-otp-modal';
 
 interface ActiveDeliveryCardProps {
   order: any;
@@ -33,6 +34,7 @@ export default function ActiveDeliveryCard({
   const [showQrModal, setShowQrModal] = useState(false);
   const [showCodConfirmModal, setShowCodConfirmModal] = useState(false);
   const [paymentMarkedLocal, setPaymentMarkedLocal] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
   const router = useRouter();
 
   const formatCurrency = (amount: number) => {
@@ -51,41 +53,49 @@ export default function ActiveDeliveryCard({
   const upiPayload = `upi://pay?pa=rasan.pay@okhdfcbank&pn=Rasan%20Foods&am=${orderTotal.toFixed(2)}&cu=INR&tn=Order%20${order.order_number}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(upiPayload)}`;
 
+  const postStatus = async (payload: Record<string, unknown>) => {
+    const response = await fetch(`/api/orders/${order.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to update status');
+    }
+  };
+
   const handleStatusUpdate = async (newStatus: string, paymentStatusOverride?: string) => {
     setIsUpdating(true);
     try {
-      const payload: any = { status: newStatus };
-      if (paymentStatusOverride) {
-        payload.payment_status = paymentStatusOverride;
+      if (paymentStatusOverride === 'paid') {
+        await postStatus({ payment_status: 'paid' });
+        setPaymentMarkedLocal(true);
       }
 
-      let response = await fetch(`/api/orders/${order.id}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        response = await fetch('/api/delivery/update-order-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: order.id, status: newStatus }),
-        });
+      // Handover requires the customer's PIN.
+      if (newStatus === 'delivered') {
+        setShowCodConfirmModal(false);
+        setShowQrModal(false);
+        setShowOtpModal(true);
+        return;
       }
 
-      if (!response.ok) {
-        throw new Error('Failed to update status');
-      }
-
+      await postStatus({ status: newStatus });
       setShowCodConfirmModal(false);
       setShowQrModal(false);
       router.refresh();
     } catch (error) {
       console.error('Error updating status:', error);
-      alert('Failed to update status. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to update status. Please try again.');
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  const handleVerifyOtp = async (otp: string) => {
+    await postStatus({ status: 'delivered', otp });
+    router.refresh();
   };
 
   const handleRecordPayment = async (mode: 'cash' | 'upi') => {
@@ -432,6 +442,13 @@ export default function ActiveDeliveryCard({
           )}
         </div>
       </Card>
+
+      <DeliveryOtpModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        order={order}
+        onVerify={handleVerifyOtp}
+      />
     </>
   );
 }

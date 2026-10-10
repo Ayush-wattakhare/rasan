@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/guards';
 import { PaymentStatus } from '@/types';
 
 export async function POST(
@@ -8,12 +9,9 @@ export async function POST(
 ) {
   try {
     const { id: orderId } = await params;
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+    const user = auth.user;
 
     const serviceClient = createServiceClient();
 
@@ -28,15 +26,8 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Check authorization (must be customer owner or admin)
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
     const isOwner = order.customer_id === user.id;
-    const isAdmin = profile?.role === 'admin';
+    const isAdmin = auth.role === 'admin';
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -64,40 +55,51 @@ export async function POST(
       );
     }
 
-    // Determine refund policy based on current status
+    // Refund policy by status. Only money actually received can be refunded.
+    const wasPaid = order.payment_status === 'paid';
     let refundPercentage = 0;
-    let paymentStatus: PaymentStatus = 'failed';
     let policyReason = '';
 
     if (['pending', 'confirmed'].includes(order.status)) {
       refundPercentage = 100;
-      paymentStatus = 'refunded';
       policyReason = 'Full 100% refund applied (Cancelled before kitchen preparation).';
     } else if (order.status === 'preparing') {
       refundPercentage = 50;
-      paymentStatus = 'refunded';
       policyReason = '50% partial refund applied (Food preparation already in progress).';
-    } else if (['out_for_delivery', 'picked_up'].includes(order.status)) {
+    } else if (['out_for_delivery', 'picked_up', 'ready'].includes(order.status)) {
       refundPercentage = 0;
-      paymentStatus = 'failed';
-      policyReason = 'Non-refundable (Order is currently out for delivery).';
+      policyReason = 'Non-refundable (Order is ready or out for delivery).';
     }
 
+    if (!wasPaid) {
+      refundPercentage = 0;
+      policyReason = 'No payment was collected for this order.';
+    }
+
+    const paymentStatus: PaymentStatus =
+      wasPaid && refundPercentage > 0 ? 'refunded' : (order.payment_status as PaymentStatus);
     const refundAmount = (order.total * refundPercentage) / 100;
 
-    // Update order status and payment status
-    const { error: updateError } = await serviceClient
+    // Conditional on the current status so a concurrent transition isn't overwritten.
+    const { data: cancelled, error: updateError } = await serviceClient
       .from('orders')
       .update({
         status: 'cancelled',
         payment_status: paymentStatus,
       })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', order.status)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
+      console.error('Cancel order error:', updateError);
+      return NextResponse.json({ error: 'Failed to cancel order' }, { status: 500 });
+    }
+    if (!cancelled) {
       return NextResponse.json(
-        { error: `Failed to cancel order: ${updateError.message}` },
-        { status: 500 }
+        { error: 'Order status changed. Please refresh and try again.' },
+        { status: 409 }
       );
     }
 
@@ -106,7 +108,7 @@ export async function POST(
       await serviceClient.from('notifications').insert({
         user_id: order.customer_id,
         type: 'order',
-        title: 'Order Cancelled & Refund Processed',
+        title: refundAmount > 0 ? 'Order Cancelled & Refund Processed' : 'Order Cancelled',
         message: `Order #${orderId.slice(0, 8)} has been cancelled. ${policyReason} Refund Amount: ₹${refundAmount.toFixed(2)}`,
         is_read: false,
       });

@@ -123,7 +123,13 @@ Common themes:
 3. Set `ADMIN_SETUP_SECRET` wherever `admin/setup` should work (it is now required).
 4. If the demo accounts created by the old demo-user route exist in production, delete them or
    change their passwords. Their credentials were in the repository.
-5. Review vendors that are `is_active=true` without admin approval and partners that are
+5. Rider earnings are credited only by the `update_delivery_partner_stats` trigger from
+   migration 001 (the routes used to credit them a second time). Make sure that trigger
+   exists in the target database.
+6. Online payments need `RAZORPAY_KEY_ID`/`NEXT_PUBLIC_RAZORPAY_KEY_ID`,
+   `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`. Without them checkout offers cash
+   only — orders are never marked paid without a verified payment.
+7. Review vendors that are `is_active=true` without admin approval and partners that are
    `is_verified=true` with seeded earnings (₹34,500) — these may have been created by the
    removed routes.
 

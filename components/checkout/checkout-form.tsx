@@ -27,7 +27,6 @@ import { orderService } from '@/lib/services/order-service';
 import { paymentService } from '@/lib/services/payment-service';
 import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
 import type { Address, PaymentMethod } from '@/types';
-import type { OrderInsert } from '@/lib/supabase/types';
 
 interface CheckoutFormProps {
   userId: string;
@@ -301,54 +300,35 @@ export function CheckoutForm({
 
     setIsProcessing(true);
 
-    const vendorId = cart.vendor_id || (cart.items[0] as any)?.vendor_id || 'v1';
+    const vendorId = cart.vendor_id || (cart.items[0] as any)?.vendor_id;
+    const isCash = paymentMethod === 'cash';
+    const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    const onlinePaymentsEnabled = !!rzpKey && rzpKey !== 'your_razorpay_key_id';
+
+    if (!isCash && !onlinePaymentsEnabled) {
+      toast({
+        title: 'Online Payments Unavailable',
+        description: 'Online payment is not set up yet. Please choose Cash on Delivery.',
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+      return;
+    }
 
     try {
-      // Validate items availability
-      try {
-        const validation = await orderService.validateOrderItems(cart.items as any);
-        if (!validation.valid) {
-          toast({
-            title: 'Items Unavailable',
-            description: `The following items are no longer available: ${validation.unavailableItems.join(', ')}`,
-            variant: 'destructive',
-          });
-          setIsProcessing(false);
-          return;
-        }
-      } catch (validationErr) {
-        console.warn('Item availability check bypassed in dev:', validationErr);
-      }
-
-      const isCash = paymentMethod === 'cash';
-
-      // Create order data
-      const orderData: OrderInsert = {
-        customer_id: userId,
-        vendor_id: vendorId as string,
+      // The server re-checks availability and computes every price and total.
+      const order = await orderService.createOrder({
         items: cart.items.map((item) => ({
           meal_id: item.meal_id,
-          name: item.name,
           quantity: item.quantity,
-          price: item.price,
           subscription_type: item.subscription_type,
           delivery_days: item.delivery_days,
           delivery_time: item.delivery_time,
-          discount_percentage: item.discount_percentage,
-        })) as any,
-        subtotal,
-        delivery_fee: deliveryFee,
-        tax: platformFee || 0,
-        discount: 0,
-        total,
+        })),
         payment_method: paymentMethod,
         delivery_address: selectedAddress,
         delivery_instructions: deliveryInstructions || null,
-        status: isCash ? 'confirmed' : 'pending',
-        payment_status: isCash ? 'pending' : 'paid',
-      };
-
-      const order = await orderService.createOrder(orderData);
+      });
 
       const createSubscriptionIfApplicable = async () => {
         if (!isSubscriptionOrder || !subscriptionItem) return null;
@@ -377,7 +357,7 @@ export function CheckoutForm({
               delivery_days: subscriptionItem.delivery_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
               delivery_time: subscriptionItem.delivery_time || '12:30 PM',
               address: selectedAddress,
-              price: total,
+              order_id: order.id,
               auto_renew: false,
             }),
           });
@@ -403,29 +383,9 @@ export function CheckoutForm({
             : 'Your home-cooked meal is being prepared by the chef.',
         });
       } else {
-        // Razorpay or instant test payment flow
-        const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-
-        if (!rzpKey || rzpKey === 'your_razorpay_key_id') {
-          toast({
-            title: isSubscriptionOrder ? 'Subscription Activated! 🎉' : 'Payment Successful 💳',
-            description: `Paid ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(total)} via ${paymentMethod.toUpperCase()}. Order confirmed!`,
-          });
-
-          try {
-            await orderService.updatePaymentStatus(order.id, 'paid', `test_pay_${Date.now()}`);
-          } catch (e) {
-            console.error('Payment status update log:', e);
-          }
-
-          await createSubscriptionIfApplicable();
-          setPlacedOrder(order);
-          clearCart();
-          return;
-        }
-
+        // Razorpay payment flow (amount is taken from the order on the server)
         const paymentOrder = await paymentService.createRazorpayOrder({
-          amount: total,
+          amount: order.total,
           orderId: order.id,
         });
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -70,40 +70,33 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: 'Can only review delivered orders' }, { status: 400 });
       }
 
+      const food = Number(body.rating?.food);
+      const delivery = Number(body.rating?.delivery);
+      const validScore = (n: number) => Number.isInteger(n) && n >= 1 && n <= 5;
+      if (!validScore(food) || !validScore(delivery)) {
+        return NextResponse.json({ error: 'Ratings must be whole numbers from 1 to 5' }, { status: 400 });
+      }
+      const rating = {
+        food,
+        delivery,
+        ...(typeof body.rating.comment === 'string' ? { comment: body.rating.comment.slice(0, 1000) } : {}),
+      };
+
       const { error } = await supabase
         .from('orders')
-        .update({ rating: body.rating, updated_at: new Date().toISOString() })
+        .update({ rating, updated_at: new Date().toISOString() })
         .eq('id', id);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to save rating' }, { status: 500 });
       }
 
       return NextResponse.json({ success: true });
     }
 
-    // If updating payment status (e.g. online/test payment completion)
-    if (body.payment_status) {
-      const serviceClient = createServiceClient();
-      const updates: any = {
-        payment_status: body.payment_status,
-        updated_at: new Date().toISOString(),
-      };
-      if (body.payment_id) updates.payment_id = body.payment_id;
-      if (body.payment_status === 'paid') updates.status = 'confirmed';
-
-      const { data: updatedOrder, error: updateError } = await serviceClient
-        .from('orders')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, order: updatedOrder });
+    // Payment status is set only by /api/payments/verify and the payment webhook.
+    if (body.payment_status !== undefined) {
+      return NextResponse.json({ error: 'Payment status cannot be changed here' }, { status: 400 });
     }
 
     return NextResponse.json({ success: true });

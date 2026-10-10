@@ -1,56 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
+import { hmacSha256Hex, markOrderPaid, signaturesMatch, toMinorUnits } from '@/lib/payments/order-payment';
 
+/**
+ * Razorpay webhook. Marks an order paid when its gateway order is captured
+ * for the full amount. Idempotent: only orders still awaiting payment change,
+ * so replays and late events cannot revive cancelled or refunded orders.
+ */
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature') || '';
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-  // Basic validation
   if (!signature || !secret) {
     console.error('Missing signature or secret for payment webhook');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Verify signature
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(body)
-    .digest('hex');
-
-  if (expectedSignature !== signature) {
+  if (!signaturesMatch(hmacSha256Hex(secret, body), signature)) {
     console.error('Invalid signature for payment webhook');
     return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
   }
 
   try {
     const event = JSON.parse(body);
-    const supabase = await createServiceClient();
 
-    // Handle payment.captured event
     if (event.event === 'payment.captured') {
-      const { order_id, id: payment_id } = event.payload.payment.entity;
-      const notes = event.payload.payment.entity.notes || {};
-      const appOrderId = notes.order_id || order_id; // Try to get our app's internal order ID from notes
+      const payment = event.payload?.payment?.entity ?? {};
+      const gatewayOrderId: string | undefined = payment.order_id;
 
-      if (appOrderId) {
-        // Update order status using service role to ensure success
-        const { error } = await supabase
-          .from('orders')
-          .update({ 
-            payment_status: 'paid', 
-            payment_id: payment_id,
-            status: 'confirmed' // Auto-confirm once paid
-          })
-          .eq('id', appOrderId);
+      if (!gatewayOrderId || !payment.id) {
+        return NextResponse.json({ success: true, ignored: 'missing order id' });
+      }
 
-        if (error) {
-          console.error('Failed to update order via webhook:', error);
-          return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
-        }
-        
-        console.log(`Payment successful for order ${appOrderId} via webhook`);
+      const { data: order } = await createServiceClient()
+        .from('orders')
+        .select('id, total, payment_status')
+        .eq('payment_order_id', gatewayOrderId)
+        .maybeSingle();
+
+      if (!order) {
+        console.warn(`Webhook: no order for gateway order ${gatewayOrderId}`);
+        return NextResponse.json({ success: true, ignored: 'unknown order' });
+      }
+
+      if (Number(payment.amount) !== toMinorUnits(order.total)) {
+        console.error(`Webhook: amount mismatch for order ${order.id}`);
+        return NextResponse.json({ success: true, ignored: 'amount mismatch' });
+      }
+
+      const result = await markOrderPaid(order.id, payment.id);
+      if (!result.ok) {
+        return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
       }
     }
 

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const { verifyDeliveryOtp } = await import('@/lib/utils/delivery-otp');
+      const { verifyDeliveryOtp } = await import('@/lib/utils/delivery-otp-server');
       const isValid = verifyDeliveryOtp(order, otp);
       if (!isValid) {
         return NextResponse.json(

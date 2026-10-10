@@ -42,7 +42,7 @@ export class PaymentService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to create payment order');
+      throw new Error(error.error || error.message || 'Failed to create payment order');
     }
 
     return response.json();
@@ -67,7 +67,7 @@ export class PaymentService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to create payment intent');
+      throw new Error(error.error || error.message || 'Failed to create payment intent');
     }
 
     return response.json();
@@ -93,7 +93,7 @@ export class PaymentService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Payment verification failed');
+      throw new Error(error.error || error.message || 'Payment verification failed');
     }
 
     return response.json();
