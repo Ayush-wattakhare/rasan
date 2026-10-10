@@ -65,11 +65,16 @@ export async function POST(request: NextRequest) {
       const authUser = authLookup?.user;
       const createdAt = authUser?.created_at ? new Date(authUser.created_at).getTime() : 0;
 
+      // An unconfirmed account (no session possible yet) may sign up again later,
+      // keeping its original created_at, so it is accepted regardless of age.
+      const isFreshSignup =
+        !authUser?.email_confirmed_at || Date.now() - createdAt <= SIGNUP_WINDOW_MS;
+
       if (
         !authUser ||
         !authUser.email ||
         authUser.email.toLowerCase() !== String(email).toLowerCase() ||
-        Date.now() - createdAt > SIGNUP_WINDOW_MS
+        !isFreshSignup
       ) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }

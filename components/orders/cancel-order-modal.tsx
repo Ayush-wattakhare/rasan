@@ -14,7 +14,7 @@ interface CancelOrderModalProps {
   orderNumber?: string | number;
   totalAmount: number;
   currentStatus: string;
-  onSuccess?: () => void;
+  onSuccess?: (paymentStatus?: string) => void;
 }
 
 const CANCELLATION_REASONS = [
@@ -69,16 +69,15 @@ export function CancelOrderModal({
         throw new Error(data.error || 'Failed to cancel order');
       }
 
+      // The server decides the refund (only money actually paid is refunded).
       toast({
         title: 'Order Cancelled Successfully',
-        description: isFullRefund
-          ? `Full 100% refund of ₹${totalAmount.toFixed(2)} processed.`
-          : 'Order cancellation has been processed.',
+        description: data.cancellation?.policyReason || 'Order cancellation has been processed.',
       });
 
       onClose();
       if (onSuccess) {
-        onSuccess();
+        onSuccess(data.cancellation?.paymentStatus);
       }
       router.refresh();
     } catch (err: any) {

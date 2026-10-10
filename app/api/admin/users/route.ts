@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { 
@@ -24,31 +27,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Only vendor and delivery roles can be created by admin' },
         { status: 400 }
-      );
-    }
-
-    // Check if request is from admin
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
       );
     }
 

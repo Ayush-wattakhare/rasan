@@ -10,6 +10,7 @@ import {
   roleFromAppMetadata,
 } from '@/lib/auth/roles';
 import { safeRedirectPath } from '@/lib/utils/safe-redirect';
+import { devToolsEnabled } from '@/lib/dev-tools';
 
 /**
  * Creates an optimized Supabase client for middleware
@@ -27,6 +28,15 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/meals';
     return NextResponse.redirect(url);
+  }
+
+  // Local dev tools (/dev/*, /admin/* tool pages) don't exist unless explicitly enabled.
+  // Rewriting here gives a real 404 status (a notFound() in a streamed layout can't).
+  const isDevToolPath =
+    pathname === '/dev' || pathname.startsWith('/dev/') ||
+    pathname === '/admin' || pathname.startsWith('/admin/');
+  if (isDevToolPath && !devToolsEnabled()) {
+    return NextResponse.rewrite(new URL('/_not-found-dev-tools', request.url));
   }
 
   // Fast-path: Skip auth checks on public pages & static assets

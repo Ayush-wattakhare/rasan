@@ -39,6 +39,8 @@ export async function GET() {
       .from('orders')
       .select('*')
       .eq('vendor_id', vendor.id)
+      // Online orders reach the kitchen only once paid; abandoned checkouts stay hidden.
+      .or('payment_method.eq.cash,payment_status.in.(paid,refunded)')
       .order('created_at', { ascending: false });
 
     if (ordersError) {

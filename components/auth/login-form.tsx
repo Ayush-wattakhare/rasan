@@ -19,7 +19,7 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const redirectTo = searchParams?.get('redirectTo');
+  const redirectTo = searchParams?.get('redirectTo') || searchParams?.get('redirect');
 
   const executeLogin = async (loginEmail: string, loginPass: string) => {
     setError('');

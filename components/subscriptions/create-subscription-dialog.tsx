@@ -362,6 +362,8 @@ export default function CreateSubscriptionDialog({
                     type="date"
                     value={formData.start_date}
                     onChange={(e) => handleStartDateChange(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    max={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
                     className="rounded-xl border-gray-200 text-xs font-medium"
                     required
                   />
@@ -374,8 +376,9 @@ export default function CreateSubscriptionDialog({
                     id="end_date"
                     type="date"
                     value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    className="rounded-xl border-gray-200 text-xs font-medium"
+                    // Set by the plan length (the server computes it the same way).
+                    readOnly
+                    className="rounded-xl border-gray-200 bg-gray-50 text-xs font-medium"
                     required
                   />
                 </div>

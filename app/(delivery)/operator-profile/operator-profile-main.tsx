@@ -36,7 +36,7 @@ export default function OperatorProfileMain({ profile, deliveryPartner }: any) {
   });
 
   const [availableYield, setAvailableYield] = useState<number>(
-    deliveryPartner.earnings?.total || 1450
+    Number(deliveryPartner.earnings?.total ?? 0)
   );
 
   const [isSaving, setIsSaving] = useState(false);

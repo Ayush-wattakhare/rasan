@@ -86,15 +86,21 @@ export default function VendorApplicationModal({ isOpen, onClose }: VendorApplic
       } else {
         setSubmitted(true);
         // If an account was just created, sign them in automatically
+        // If an account was just created, sign them in. When email confirmation is
+        // required this fails until they click the link, so tell them.
+        let needsEmailConfirmation = false;
         if (data.createdAccount && formData.email && formData.password) {
-          await supabase.auth.signInWithPassword({
+          const { error: signInError } = await supabase.auth.signInWithPassword({
             email: formData.email,
             password: formData.password,
           });
+          needsEmailConfirmation = !!signInError;
         }
         toast({
           title: 'Application Submitted! 🎉',
-          description: 'Your chef application has been received and is under review.',
+          description: needsEmailConfirmation
+            ? 'Please confirm your email address (check your inbox), then log in to track your application.'
+            : 'Your chef application has been received and is under review.',
         });
       }
     } catch (err: any) {

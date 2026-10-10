@@ -79,6 +79,14 @@ WHERE p.id = u.id;
 -- New kitchens are unlisted until approved (all server inserts set is_active explicitly).
 ALTER TABLE vendors ALTER COLUMN is_active SET DEFAULT false;
 
+-- Kitchens that are already live keep working: mark their owners verified so the
+-- activation guard below doesn't stop them reopening after closing. Review these
+-- vendors after deploy (see PLAN §5).
+UPDATE profiles p
+SET is_verified = true
+WHERE p.is_verified IS DISTINCT FROM true
+  AND EXISTS (SELECT 1 FROM vendors v WHERE v.user_id = p.id AND v.is_active IS TRUE);
+
 REVOKE INSERT, UPDATE ON vendors FROM anon, authenticated;
 GRANT INSERT (user_id, business_name, description, cuisine, location, address, phone, email,
               operating_hours, documents)
@@ -153,6 +161,7 @@ DROP POLICY IF EXISTS "Customers can create orders" ON orders;
 DROP POLICY IF EXISTS "Vendors can update order status" ON orders;
 DROP POLICY IF EXISTS "Delivery partners can update delivery status" ON orders;
 DROP POLICY IF EXISTS "Customers can update their own orders" ON orders;
+DROP POLICY IF EXISTS "Customers can rate their own delivered orders" ON orders;
 CREATE POLICY "Customers can rate their own delivered orders"
   ON orders FOR UPDATE
   USING (customer_id = auth.uid() AND status = 'delivered')
@@ -363,8 +372,9 @@ AS $$
   SELECT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin');
 $$;
 
-REVOKE EXECUTE ON FUNCTION is_admin() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION is_admin() TO authenticated, service_role;
+-- Anonymous visitors must be able to call it too (it returns false for them), because
+-- policies that use it are evaluated for public reads such as the vendor listing.
+GRANT EXECUTE ON FUNCTION is_admin() TO anon, authenticated, service_role;
 
 -- profiles held email, phone and address and were readable by anyone.
 DROP POLICY IF EXISTS "Anyone can view active profiles" ON profiles;
@@ -391,6 +401,17 @@ REVOKE SELECT ON vendors FROM anon, authenticated;
 GRANT SELECT (id, user_id, business_name, description, cuisine, location, address, phone,
               email, operating_hours, rating, total_orders, is_active, created_at, updated_at)
   ON vendors TO anon, authenticated;
+
+-- Admin dashboards read all orders and subscriptions (there was no admin policy).
+DROP POLICY IF EXISTS "Admins can view all orders" ON orders;
+CREATE POLICY "Admins can view all orders"
+  ON orders FOR SELECT
+  USING (is_admin());
+
+DROP POLICY IF EXISTS "Admins can view all subscriptions" ON subscriptions;
+CREATE POLICY "Admins can view all subscriptions"
+  ON subscriptions FOR SELECT
+  USING (is_admin());
 
 -- ---------------------------------------------------------------------------
 -- 10. Delivery handover codes: readable only by the ordering customer
@@ -422,5 +443,109 @@ ON CONFLICT (order_id) DO NOTHING;
 UPDATE orders
 SET delivery_address = delivery_address - 'delivery_otp'
 WHERE delivery_address ? 'delivery_otp';
+
+-- Orders still in progress that never had a stored PIN used the old app's fallback:
+-- the last 4 digits of the order number (what their customers were shown). Keep it so
+-- in-flight deliveries can still be completed; otherwise a random code.
+INSERT INTO order_handover_codes (order_id, code)
+SELECT o.id,
+       CASE
+         WHEN length(regexp_replace(COALESCE(o.order_number, ''), '[^0-9]', '', 'g')) >= 4
+           THEN right(regexp_replace(o.order_number, '[^0-9]', '', 'g'), 4)
+         ELSE lpad((1000 + floor(random() * 9000))::int::text, 4, '0')
+       END
+FROM orders o
+WHERE o.status NOT IN ('delivered', 'cancelled')
+  AND NOT EXISTS (SELECT 1 FROM order_handover_codes h WHERE h.order_id = o.id)
+ON CONFLICT (order_id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- 11. Fix notification triggers from 002
+--     They selected `user_id FROM profiles` (profiles has no user_id column), which
+--     made every order INSERT and every rider pickup/assignment UPDATE fail.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION notify_new_order()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO notifications (user_id, type, title, message, data)
+  SELECT v.user_id, 'order', 'New Mission Received',
+         'You have a new order #' || NEW.order_number || ' waiting for confirmation.',
+         jsonb_build_object('order_id', NEW.id)
+  FROM vendors v
+  WHERE v.id = NEW.vendor_id AND v.user_id IS NOT NULL;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION notify_order_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_business_name TEXT;
+  v_vendor_user_id UUID;
+  v_title TEXT;
+  v_message TEXT;
+  v_type TEXT := 'order';
+BEGIN
+  SELECT business_name, user_id INTO v_business_name, v_vendor_user_id
+  FROM vendors WHERE id = NEW.vendor_id;
+
+  -- Notify customer
+  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.customer_id IS NOT NULL THEN
+    CASE NEW.status
+      WHEN 'confirmed' THEN
+        v_title := 'Order Confirmed!';
+        v_message := 'Your order from ' || COALESCE(v_business_name, 'the kitchen') || ' has been accepted and is being processed.';
+      WHEN 'preparing' THEN
+        v_title := 'Preparing your meal';
+        v_message := COALESCE(v_business_name, 'The kitchen') || ' is now preparing your delicious home-cooked meal.';
+      WHEN 'ready' THEN
+        v_title := 'Order Ready!';
+        v_message := 'Your meal is ready and waiting for a delivery partner.';
+      WHEN 'picked_up' THEN
+        v_title := 'Meal Picked Up';
+        v_message := 'A delivery partner has picked up your order and is heading your way.';
+      WHEN 'out_for_delivery' THEN
+        v_title := 'Out for Delivery';
+        v_message := 'Your meal is almost there! The delivery partner is in your neighborhood.';
+      WHEN 'delivered' THEN
+        v_title := 'Mission Accomplished';
+        v_message := 'Your meal has been delivered. Enjoy your home-cooked experience!';
+        v_type := 'system';
+      WHEN 'cancelled' THEN
+        v_title := 'Order Cancelled';
+        v_message := 'Your order from ' || COALESCE(v_business_name, 'the kitchen') || ' has been cancelled.';
+        v_type := 'system';
+      ELSE
+        v_title := NULL;
+    END CASE;
+
+    IF v_title IS NOT NULL THEN
+      INSERT INTO notifications (user_id, type, title, message, data)
+      VALUES (NEW.customer_id, v_type, v_title, v_message,
+              jsonb_build_object('order_id', NEW.id, 'status', NEW.status));
+    END IF;
+  END IF;
+
+  -- Notify vendor when a delivery partner is assigned / picks up
+  IF v_vendor_user_id IS NOT NULL
+     AND NEW.delivery_partner_id IS NOT NULL
+     AND (OLD.delivery_partner_id IS NULL OR (NEW.status = 'picked_up' AND OLD.status IS DISTINCT FROM 'picked_up')) THEN
+    INSERT INTO notifications (user_id, type, title, message, data)
+    VALUES (
+      v_vendor_user_id,
+      'delivery',
+      CASE WHEN NEW.status = 'picked_up' THEN 'Order Picked Up' ELSE 'Partner Assigned' END,
+      CASE WHEN NEW.status = 'picked_up'
+        THEN 'Order #' || NEW.order_number || ' has been picked up by the delivery partner.'
+        ELSE 'A delivery partner has been assigned to Order #' || NEW.order_number
+      END,
+      jsonb_build_object('order_id', NEW.id)
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 COMMIT;
