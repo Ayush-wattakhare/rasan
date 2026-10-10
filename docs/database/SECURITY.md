@@ -55,8 +55,8 @@ RLS is enabled on all 13 tables. Policies have no `TO` clause, so a policy that 
 | `vendors` | rows with `is_active = true`; own rows; admins (public columns only, see above) | own `user_id` and `is_active = false` | own rows | none |
 | `meals` | `is_available = true`; owner vendor (all) | owner vendor | owner vendor | owner vendor |
 | `delivery_partners` | own row; admins | own `user_id` | own row | none |
-| `orders` | customer, owning vendor, assigned rider | none | customer, only while `status = 'delivered'` (rating) | none |
-| `subscriptions` | customer; owning vendor | none | customer | none |
+| `orders` | customer, owning vendor, assigned rider, admins | none | customer, only while `status = 'delivered'` (rating) | none |
+| `subscriptions` | customer; owning vendor; admins | none | customer | none |
 | `notifications` | own | none | own | none |
 | `categories` | `is_active = true` | none | none | none |
 | `reviews` | everyone | own `user_id` and own **delivered** order | own | none |
@@ -116,6 +116,14 @@ Open issues after 003:
 | Two `002_` migrations | `002_fix_order_rls.sql` and `002_notifications_triggers.sql` share a prefix. Apply both before 003 |
 
 ## How to verify
+
+**Automated:** `supabase/tests/run-migration-tests.sh` builds a throwaway local Postgres database
+(no Docker or PostGIS needed), seeds it the way an existing database looks before 003, applies
+001 → 003 (003 twice, to prove it can be re-run), then runs 71 checks as anon, customer, vendor,
+rider, admin and the service role. It covers grants, RLS, guard triggers, handover codes,
+payouts and the notification triggers. Run it after any migration change.
+
+**Manually against a real project:**
 
 Run these in the SQL Editor (it runs as `postgres`). Each block impersonates an end user inside
 a transaction and rolls back. Replace `<user-uuid>` with a real `auth.users.id` (ideally a

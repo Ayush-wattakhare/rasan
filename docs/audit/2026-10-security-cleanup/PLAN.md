@@ -130,7 +130,13 @@ Common themes:
 6. Online payments need `RAZORPAY_KEY_ID`/`NEXT_PUBLIC_RAZORPAY_KEY_ID`,
    `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`. Without them checkout offers cash
    only — orders are never marked paid without a verified payment.
-7. Review vendors that are `is_active=true` without admin approval and partners that are
+8. Before applying, run `supabase/tests/run-migration-tests.sh` (local Postgres) to check the
+   migration. It is safe to re-run.
+9. 003 also: fixes the 002 notification triggers (they broke every order insert and rider
+   pickup on a database built from the migrations), gives in-progress orders a handover PIN
+   (the last 4 digits of the order number, which the old app showed customers), and marks the
+   owners of already-live kitchens as verified so they can keep reopening.
+10. Review vendors that are `is_active=true` without admin approval and partners that are
    `is_verified=true` with seeded earnings (₹34,500) — these may have been created by the
    removed routes.
 

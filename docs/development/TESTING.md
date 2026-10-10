@@ -2,6 +2,12 @@
 
 Rasan uses Jest for unit and component tests and Playwright for end-to-end tests. The second half of this page is a manual QA checklist for each role.
 
+## Database migration tests
+
+`supabase/tests/run-migration-tests.sh` applies all migrations to a throwaway local Postgres
+database and runs 71 permission checks (grants, RLS, triggers, payouts) as each kind of user.
+Needs only a local Postgres (`psql`, `createdb`). See [Security](../database/SECURITY.md#how-to-verify).
+
 ## Running tests
 
 | Command | What it does |

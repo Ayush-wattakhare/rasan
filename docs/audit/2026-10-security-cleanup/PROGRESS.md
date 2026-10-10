@@ -50,6 +50,35 @@ Status legend: ⬜ todo · 🔄 in progress · ✅ done · ⏭️ skipped (reaso
   (read-access gaps, a missing RPC, silently failing notification inserts and unchecked live-ops actions). These were
   fixed and folded into migration 003. Final verification green.
 
+## Functional verification (2026-10-10)
+
+Checks that the hardening doesn't break the product:
+
+| Check | Result |
+|---|---|
+| Migrations 001 → 003 on Postgres 16 (Supabase roles/auth emulated, PostGIS stubbed), seeded like an existing DB, 003 applied twice | ✅ applies cleanly, re-runnable |
+| 71 permission/behaviour checks as anon, customer, vendor, rider, admin, service role (`supabase/tests/run-migration-tests.sh`) | ✅ 71/71 |
+| Production build smoke test, logged out: public pages, protected-page redirects, API 401s, dev tools 404, removed routes 404, open-redirect blocked, unsigned webhook rejected | ✅ |
+| Three read-only regression reviews (customer / vendor & rider / admin & auth) tracing UI → API → DB | Findings fixed (below) |
+
+Found and fixed during this pass:
+- Logged-out visitors couldn't read vendors/meals (`is_admin()` not executable by `anon`).
+- 002 notification triggers referenced a non-existent column, breaking order inserts and rider pickups on a DB built from the migrations.
+- In-flight orders would have had no handover PIN after the migration (riders stuck at handover).
+- Rider earnings page / dashboard offered balances the payout check would refuse (and a fake ₹1,450 fallback).
+- Abandoned unpaid online orders showed in the kitchen's list with a Confirm button that always failed.
+- Already-live kitchens couldn't reopen after closing (now grandfathered as verified).
+- Delivery PIN flickered off the tracking page on realtime updates.
+- Declining a partner application suspended the whole account.
+- Re-registering an old unconfirmed email couldn't create a profile.
+- Cancel modal claimed a refund for unpaid orders; tracker marked them refunded.
+- Rider dashboard kept failed accepts as active until the next poll; application modals didn't tell users to confirm their email.
+- Dev-tool pages returned 200 instead of 404; `/api/admin/users` validated before checking admin.
+- Pre-existing, also fixed: admins couldn't read orders/subscriptions (zero dashboard stats), review form sent the wrong field, `?redirect=` login links, subscription dialog end date silently ignored.
+
+Not testable here: logged-in flows against a live Supabase (no project access, no Docker). Run the
+manual QA checklist in docs/development/TESTING.md on a staging project after applying 003.
+
 ## Not done / follow-ups
 
 Out of scope for this branch, or need a decision or database access:
@@ -62,6 +91,8 @@ Out of scope for this branch, or need a decision or database access:
 | Shared rate limiting | OTP attempt limit is in-memory (per serverless instance) |
 | `profiles` storage bucket | Avatar upload targets a `profiles` bucket that no migration creates (see docs/database/SETUP.md) |
 | Group orders | Non-host participants can't join (RLS); finalize uses its own ₹50 delivery / 5% tax pricing |
+| Admin live ops | Order list reads the vendor endpoint and the reassign modal calls a GET that doesn't exist (pre-existing) |
+| Checkout without Razorpay keys | Online payment is refused (cash only); if only the public key is set, the order is created but payment start fails |
 | Column grants on `meals`, `reviews`, `group_orders`, `subscriptions.deliveries` | Owners can still edit any column of their own rows directly |
 | Commission rate | Code uses 7% everywhere now; confirm that's the intended business rate |
 | Lint warnings | 730 pre-existing warnings (mostly `any` / unused vars); 0 errors |
