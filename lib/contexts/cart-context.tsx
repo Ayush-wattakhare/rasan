@@ -7,9 +7,21 @@ const CART_STORAGE_KEY = 'rasan_cart';
 const PLATFORM_FEE = 2;
 const DELIVERY_FEE = 0;
 
+export interface AddItemResult {
+  success: boolean;
+  conflict?: boolean;
+  currentVendorId?: string;
+}
+
 interface CartContextType {
   cart: Cart;
-  addItem: (item: Partial<CartItem> & { meal_id: string; vendor_id: string; name: string; price: number; is_veg: boolean }) => void;
+  addItem: (
+    item: Partial<CartItem> & { meal_id: string; vendor_id: string; name: string; price: number; is_veg: boolean },
+    options?: { replaceIfConflict?: boolean }
+  ) => AddItemResult;
+  clearAndAddItem: (
+    item: Partial<CartItem> & { meal_id: string; vendor_id: string; name: string; price: number; is_veg: boolean }
+  ) => void;
   updateQuantity: (meal_id: string, quantity: number, subscription_type?: SubscriptionType) => void;
   updateItemOptions: (meal_id: string, oldType: SubscriptionType, updates: Partial<CartItem>) => void;
   removeItem: (meal_id: string, subscription_type?: SubscriptionType) => void;
@@ -151,20 +163,67 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [cart, isLoading]);
 
-  const addItem = useCallback(
+  const clearAndAddItem = useCallback(
     (item: Partial<CartItem> & { meal_id: string; vendor_id: string; name: string; price: number; is_veg: boolean }) => {
-      setCart((prevCart) => {
-        const fullItem: CartItem = {
-          quantity: 1,
-          subscription_type: 'one-time',
-          delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
-          delivery_time: '12:00 PM',
-          discount_percentage: 0,
-          ...item,
-        } as CartItem;
+      const fullItem: CartItem = {
+        quantity: 1,
+        subscription_type: 'one-time',
+        delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        delivery_time: '12:30 PM',
+        discount_percentage: 0,
+        ...item,
+      } as CartItem;
 
-        if (prevCart.items.length > 0 && prevCart.vendor_id !== fullItem.vendor_id) {
-          throw new Error('Cannot add items from different vendors. Please clear your cart first.');
+      const newItems = [fullItem];
+      const totals = calculateTotals(newItems);
+      setCart({
+        items: newItems,
+        vendor_id: fullItem.vendor_id,
+        platform_fee: PLATFORM_FEE,
+        delivery_fee: DELIVERY_FEE,
+        ...totals,
+      });
+    },
+    [calculateTotals]
+  );
+
+  const addItem = useCallback(
+    (
+      item: Partial<CartItem> & { meal_id: string; vendor_id: string; name: string; price: number; is_veg: boolean },
+      options?: { replaceIfConflict?: boolean }
+    ): AddItemResult => {
+      const fullItem: CartItem = {
+        quantity: 1,
+        subscription_type: 'one-time',
+        delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        delivery_time: '12:30 PM',
+        discount_percentage: 0,
+        ...item,
+      } as CartItem;
+
+      // 1. Check for vendor conflict synchronously
+      if (cart.items.length > 0 && cart.vendor_id && cart.vendor_id !== fullItem.vendor_id) {
+        if (options?.replaceIfConflict) {
+          clearAndAddItem(fullItem);
+          return { success: true, conflict: false };
+        }
+        return { success: false, conflict: true, currentVendorId: cart.vendor_id };
+      }
+
+      // 2. Safe state update (never throw inside React state updater)
+      setCart((prevCart) => {
+        if (prevCart.items.length > 0 && prevCart.vendor_id && prevCart.vendor_id !== fullItem.vendor_id) {
+          if (options?.replaceIfConflict) {
+            const newItems = [fullItem];
+            const totals = calculateTotals(newItems);
+            return {
+              ...prevCart,
+              items: newItems,
+              vendor_id: fullItem.vendor_id,
+              ...totals,
+            };
+          }
+          return prevCart;
         }
 
         const existingItemIndex = prevCart.items.findIndex(
@@ -190,8 +249,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           ...totals,
         };
       });
+
+      return { success: true, conflict: false };
     },
-    [calculateTotals]
+    [cart, calculateTotals, clearAndAddItem]
   );
 
   const updateQuantity = useCallback(
@@ -301,6 +362,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       value={{
         cart,
         addItem,
+        clearAndAddItem,
         updateQuantity,
         updateItemOptions,
         removeItem,
@@ -314,12 +376,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useCartContext() {
+export function useCartContext(): CartContextType {
   const context = useContext(CartContext);
   if (context === undefined) {
     return {
       cart: {
         items: [],
+        vendor_id: undefined,
         subtotal: 0,
         base_subtotal: 0,
         total_savings: 0,
@@ -327,7 +390,8 @@ export function useCartContext() {
         delivery_fee: DELIVERY_FEE,
         total: 0,
       },
-      addItem: () => {},
+      addItem: () => ({ success: true }),
+      clearAndAddItem: () => {},
       updateQuantity: () => {},
       updateItemOptions: () => {},
       removeItem: () => {},

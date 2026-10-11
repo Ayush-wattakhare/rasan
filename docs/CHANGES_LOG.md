@@ -4,6 +4,26 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-11] - Multi-Vendor Cart Crash Fix & Smart "Replace & Add" Modal
+- **Date & Time:** 2026-10-11 19:03 IST
+- **Objective:** Fix the fatal React error boundary crash ("This page couldn't load") when adding a meal from a second home kitchen, and implement a smart, Swiggy/Zomato-style "Replace & Add" dialog so users can seamlessly switch home kitchens with one tap.
+- **Implementation Plan:**
+  1. Remove `throw new Error` from inside React's `setCart` state updater callback in `lib/contexts/cart-context.tsx` to stop unhandled background exceptions from unmounting the page.
+  2. Implement synchronous conflict detection in `addItem` returning `{ success, conflict }` and expose `clearAndAddItem` in `useCart`.
+  3. Integrate an interactive confirmation `Dialog` in `MealCard` giving the user clear choices: "Keep Current Bag" or "Replace & Add".
+  4. Update `AddToCartButton` to handle conflicts cleanly without crashing.
+- **Files Modified / Created:**
+  - `lib/contexts/cart-context.tsx` - Replaced fatal `throw` in state updater with synchronous conflict detection, `AddItemResult`, and `clearAndAddItem`.
+  - `components/meals/meal-card.tsx` - Added interactive vendor conflict dialog with 1-click "Replace & Add" action.
+  - `components/meals/add-to-cart-button.tsx` - Handled conflict result gracefully without throwing.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npm test`: All unit tests passed.
+  - `npm run build`: Compiled with Turbopack and generated all 113 routes with 0 errors.
+
+---
+
 ### [2026-10-11] - Quick Add to Cart & Student/Worker Lunch Break Delivery Slot
 - **Date & Time:** 2026-10-11 18:27 IST
 - **Objective:** Enable direct 1-click addition of meals to the cart from the Explore page (`+` icon on meal cards) without navigating to the meal details page, and add a dedicated lunch break delivery time slot picker for Daily orders tailored for students and working professionals.
