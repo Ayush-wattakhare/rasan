@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Info, Sparkles, Tag } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/format';
 
 interface CartSummaryProps {
   subtotal: number;
@@ -14,14 +15,6 @@ interface CartSummaryProps {
   onCheckout?: () => void;
   checkoutLabel?: string;
 }
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
 
 export function CartSummary({
   subtotal,

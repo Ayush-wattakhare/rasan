@@ -4,6 +4,30 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-11] - Option A: Clean Whole Rupee Pricing Standard & Price Parity
+- **Date & Time:** 2026-10-11 20:20 IST
+- **Objective:** Fix price discrepancy between Explore menu card (e.g. ₹149.78 / ₹198.97) and Shopping Bag / Cart Summary (₹150 / ₹199) that caused customer confusion and fraud concerns. Implement Option A (Clean Whole Rupee standard) across the database, service queries, and cart computations.
+- **Implementation Plan:**
+  1. Update live Supabase database records for active meals (`biryani` from 149.78 to 150, `Ramen` from 198.97 to 199).
+  2. Normalize meal prices in backend services (`lib/services/meal-service.ts` and `lib/services/vendor-service.ts`) using `Math.round(Number(price) || 0)`.
+  3. Enforce clean integer pricing in `lib/contexts/cart-context.tsx` (`getItemPricing`, `addItem`, and localStorage deserialization).
+  4. Standardize currency display across components (`components/cart/cart-item.tsx`, `components/cart/cart-summary.tsx`) by using the central `@/lib/utils/format` utility.
+  5. Run test suite and TypeScript verification. Keep changes local on branch `remove/persona-switcher` without pushing to GitHub.
+- **Files Modified / Created:**
+  - `lib/services/meal-service.ts` - Normalized `price` and `discount_price` with `Math.round` in `getMeals` and `getMealById`.
+  - `lib/services/vendor-service.ts` - Normalized meal prices in `getVendorMeals`.
+  - `lib/contexts/cart-context.tsx` - Enforced whole-rupee math in `getItemPricing`, `addItem`, and storage hydration.
+  - `components/cart/cart-item.tsx` - Replaced local duplicate formatter with shared `formatCurrency`.
+  - `components/cart/cart-summary.tsx` - Replaced local duplicate formatter with shared `formatCurrency`.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npm test`: 4 test suites passed, 47 tests passed with 0 failures.
+  - `npx tsc --noEmit`: Completed with 0 type errors.
+  - Supabase live database verification: `biryani` confirmed at ₹150, `Ramen` confirmed at ₹199.
+
+---
+
 ### [2026-10-11] - Multi-Vendor Cart Crash Fix & Smart "Replace & Add" Modal
 - **Date & Time:** 2026-10-11 19:03 IST
 - **Objective:** Fix the fatal React error boundary crash ("This page couldn't load") when adding a meal from a second home kitchen, and implement a smart, Swiggy/Zomato-style "Replace & Add" dialog so users can seamlessly switch home kitchens with one tap.

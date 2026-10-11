@@ -124,7 +124,11 @@ export async function getMeals(
   }
 
   return {
-    meals: data || [],
+    meals: (data || []).map((meal: any) => ({
+      ...meal,
+      price: Math.round(Number(meal.price) || 0),
+      discount_price: meal.discount_price ? Math.round(Number(meal.discount_price)) : null,
+    })),
     total: count || 0,
     page,
     limit,
@@ -162,6 +166,13 @@ export async function getMealById(
       console.error(`[meal-service] getMealById error — code: ${code}, message: ${message}`);
     }
     return null;
+  }
+
+  if (data) {
+    data.price = Math.round(Number(data.price) || 0);
+    if (data.discount_price) {
+      data.discount_price = Math.round(Number(data.discount_price));
+    }
   }
 
   return data;

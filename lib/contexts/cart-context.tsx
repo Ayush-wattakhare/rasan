@@ -34,7 +34,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const getItemPricing = (item: CartItem) => {
   const subType = item.subscription_type || 'one-time';
-  const price = Number(item.price) || 0;
+  const price = Math.round(Number(item.price) || 0);
   const quantity = Math.max(1, item.quantity || 1);
   const daysCount = Math.max(1, (item.delivery_days || []).length);
 
@@ -57,10 +57,10 @@ export const getItemPricing = (item: CartItem) => {
     cycleDescription = '1 meal';
   }
 
-  const basePrice = price * multiplier * quantity;
+  const basePrice = Math.round(price * multiplier * quantity);
   const savings = Math.round((basePrice * discountPct) / 100);
   const finalPrice = Math.max(0, basePrice - savings);
-  const pricePerMeal = multiplier > 0 ? finalPrice / (multiplier * quantity) : price;
+  const pricePerMeal = multiplier > 0 ? Math.round(finalPrice / (multiplier * quantity)) : price;
 
   return {
     subType,
@@ -122,6 +122,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
           return {
             ...item,
+            price: Math.round(Number(item.price) || 0),
             subscription_type: subType,
             delivery_days:
               item.delivery_days && item.delivery_days.length > 0
@@ -199,6 +200,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         delivery_time: '12:30 PM',
         discount_percentage: 0,
         ...item,
+        price: Math.round(Number(item.price) || 0),
       } as CartItem;
 
       // 1. Check for vendor conflict synchronously

@@ -6,6 +6,7 @@ import { X, Plus, Minus, Clock, Calendar, Sparkles, Edit2, Check, Tag } from 'lu
 import { Button } from '@/components/ui/button';
 import type { CartItem as CartItemType, SubscriptionType } from '@/types';
 import { getItemPricing } from '@/lib/contexts/cart-context';
+import { formatCurrency } from '@/lib/utils/format';
 
 interface CartItemProps {
   item: CartItemType;
@@ -13,14 +14,6 @@ interface CartItemProps {
   onUpdateOptions: (updates: Partial<CartItemType>) => void;
   onRemove: () => void;
 }
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
 
 const days = [
   { id: 'monday', label: 'Mon' },

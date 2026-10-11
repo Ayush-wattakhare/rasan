@@ -129,7 +129,11 @@ export async function getVendorMeals(
     return [];
   }
 
-  return data || [];
+  return (data || []).map((meal: any) => ({
+    ...meal,
+    price: Math.round(Number(meal.price) || 0),
+    discount_price: meal.discount_price ? Math.round(Number(meal.discount_price)) : null,
+  }));
 }
 
 /**
