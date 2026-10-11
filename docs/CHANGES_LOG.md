@@ -4,6 +4,34 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-11] - Customer Delivery Address Overhaul: Flat No, Landmark, PIN Code & GPS Auto-Detection
+- **Date & Time:** 2026-10-11 23:58 IST
+- **Objective:** Overhaul the customer address management page (`components/profile/address-manager.tsx` and `app/(customer)/profile/page.tsx`). Remove confusing raw Latitude/Longitude input fields and replace them with standard Indian delivery address fields (Flat/House No, Building/Society Name, Street/Area, Landmark, PIN Code, Address Type, Contact Info) plus a 1-click GPS auto-detect button with background coordinates and floating dock padding (`pb-32`).
+- **Implementation Plan:**
+  1. Revamp `AddressManager` in `components/profile/address-manager.tsx` with structured Indian delivery address fields:
+     - House/Flat/Room No. (`house_no`)
+     - Apartment/Society/Building Name (`building_name`)
+     - Street/Colony/Area (`street`)
+     - Landmark (`landmark`)
+     - City, State, and 6-digit PIN Code (`zip_code`)
+     - Address Tag (Home, Work, Other)
+     - Receiver contact name & phone
+  2. Integrate one-click "Use Current GPS Location" button using `getAccurateLocation` to automatically fill locality, street, city, state, pincode, and coordinates in the background.
+  3. Remove manual raw latitude and longitude number inputs from customer view, keeping coordinates safely populated in the background payload for delivery radius calculations.
+  4. Format the saved address display card with clear visual hierarchy, badges, and icon indicators.
+  5. Add `pb-32` bottom padding to `app/(customer)/profile/page.tsx` so the floating bottom navigation bar never obstructs buttons or inputs.
+  6. Verify with `npx tsc --noEmit` and `npm test`.
+- **Files Modified / Created:**
+  - `components/profile/address-manager.tsx` - Completely overhauled with complete address fields and GPS auto-fill.
+  - `app/(customer)/profile/page.tsx` - Added floating nav bottom padding.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript compiler errors.
+  - `npm test`: 10/10 test suites passed, 117/117 unit tests passed with 0 failures.
+
+---
+
 ### [2026-10-11] - Custom Delivery Time AM/PM Controls & Time-of-Day Note (Morning/Afternoon/Night)
 - **Date & Time:** 2026-10-11 23:08 IST
 - **Objective:** Enable clear AM / PM selection for custom delivery break slots in the cart, eliminating native 24-hour browser ambiguities (e.g. typing 02:00 defaulting to 02:00 AM). In addition, display contextual time-of-day indicators (Morning, Afternoon, Evening, Night) beside and below the selected time slot.

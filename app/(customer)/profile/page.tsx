@@ -29,7 +29,7 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl py-8">
+    <div className="container mx-auto max-w-4xl py-8 pb-32">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Profile Settings</h1>
         <p className="text-muted-foreground">
