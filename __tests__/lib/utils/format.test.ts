@@ -5,6 +5,7 @@ import {
   formatOrderNumber,
   truncateText,
   formatRating,
+  getTimeOfDayInfo,
 } from '@/lib/utils/format'
 
 describe('Format Utilities', () => {
@@ -100,6 +101,45 @@ describe('Format Utilities', () => {
 
     it('should handle maximum rating', () => {
       expect(formatRating(5)).toBe('5.0')
+    })
+  })
+
+  describe('getTimeOfDayInfo', () => {
+    it('should identify morning slots (5 AM - 11:59 AM)', () => {
+      const res = getTimeOfDayInfo('09:00 AM')
+      expect(res.period).toBe('Morning')
+      expect(res.label).toBe('Morning')
+      expect(res.icon).toBe('☀️')
+    })
+
+    it('should identify afternoon slots (12 PM - 4:59 PM)', () => {
+      const res1 = getTimeOfDayInfo('12:30 PM')
+      expect(res1.period).toBe('Afternoon')
+      expect(res1.label).toBe('Afternoon')
+
+      const res2 = getTimeOfDayInfo('02:00 PM')
+      expect(res2.period).toBe('Afternoon')
+      expect(res2.label).toBe('Afternoon')
+    })
+
+    it('should identify evening slots (5 PM - 8:59 PM)', () => {
+      const res = getTimeOfDayInfo('07:30 PM')
+      expect(res.period).toBe('Evening')
+      expect(res.label).toBe('Evening')
+      expect(res.icon).toBe('🌇')
+    })
+
+    it('should identify night slots (9 PM - 11:59 PM)', () => {
+      const res = getTimeOfDayInfo('09:30 PM')
+      expect(res.period).toBe('Night')
+      expect(res.label).toBe('Night')
+      expect(res.icon).toBe('🌙')
+    })
+
+    it('should handle slot ranges like 12:00 - 12:30 PM', () => {
+      const res = getTimeOfDayInfo('12:00 - 12:30 PM')
+      expect(res.period).toBe('Afternoon')
+      expect(res.label).toBe('Afternoon')
     })
   })
 })

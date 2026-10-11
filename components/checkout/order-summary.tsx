@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import type { CartItem } from '@/types';
+import { getTimeOfDayInfo } from '@/lib/utils/format';
 
 interface OrderSummaryProps {
   items: CartItem[];
@@ -61,11 +62,16 @@ export function OrderSummary({
                   <span className="text-xs text-muted-foreground">
                     Qty: {item.quantity}
                   </span>
-                  {item.delivery_time && (
-                    <span className="text-[0.65rem] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
-                      Slot: {item.delivery_time}
-                    </span>
-                  )}
+                  {item.delivery_time && (() => {
+                    const timeInfo = getTimeOfDayInfo(item.delivery_time);
+                    return (
+                      <span className="text-[0.65rem] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 inline-flex items-center gap-1">
+                        <span>{timeInfo.icon}</span>
+                        <span>Slot: {item.delivery_time}</span>
+                        <span className="text-orange-500 font-semibold">• {timeInfo.label}</span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="text-sm font-medium mt-1">
                   ₹{(item.price * item.quantity).toFixed(2)}

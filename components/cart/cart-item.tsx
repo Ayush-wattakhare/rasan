@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { X, Plus, Minus, Clock, Calendar, Sparkles, Edit2, Check, Tag } from 'lucide-react';
+import { X, Plus, Minus, Clock, Calendar, Sparkles, Edit2, Check, Tag, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CartItem as CartItemType, SubscriptionType } from '@/types';
 import { getItemPricing } from '@/lib/contexts/cart-context';
-import { formatCurrency } from '@/lib/utils/format';
+import { formatCurrency, getTimeOfDayInfo } from '@/lib/utils/format';
 
 interface CartItemProps {
   item: CartItemType;
@@ -50,7 +50,33 @@ export function CartItem({
   const [showCustomTimeInput, setShowCustomTimeInput] = useState(
     !LUNCH_BREAK_SLOTS.some((s) => s.time === deliveryTime) && deliveryTime !== '12:00 PM' && deliveryTime !== '12:30 PM'
   );
-  const [customTimeValue, setCustomTimeValue] = useState('');
+
+  // Parse delivery time into hours, minutes, and AM/PM period
+  const parseDeliveryTime = (timeStr: string) => {
+    const hasPM = /\bPM\b/i.test(timeStr);
+    const hasAM = /\bAM\b/i.test(timeStr);
+    const period: 'AM' | 'PM' = hasAM ? 'AM' : 'PM';
+
+    const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+      let h = parseInt(match[1], 10);
+      if (h <= 0 || h > 12) {
+        h = h % 12 || 12;
+      }
+      const hourStr = String(h).padStart(2, '0');
+      const minuteStr = match[2];
+      return { hour: hourStr, minute: minuteStr, period };
+    }
+    return { hour: '01', minute: '00', period: 'PM' as 'AM' | 'PM' };
+  };
+
+  const parsedTime = parseDeliveryTime(deliveryTime);
+  const currentTimeInfo = getTimeOfDayInfo(deliveryTime);
+
+  const COMMON_MINUTES = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+  const minuteOptions = COMMON_MINUTES.includes(parsedTime.minute)
+    ? COMMON_MINUTES
+    : [...COMMON_MINUTES, parsedTime.minute].sort();
 
   // Calculate dynamic pricing taking into account selected days, plan duration, and discounts
   const pricing = getItemPricing({
@@ -70,23 +96,9 @@ export function CartItem({
     onUpdateOptions({ delivery_days: newDays });
   };
 
-  const format24To12 = (val: string) => {
-    if (!val) return '12:00 PM';
-    const [h, m] = val.split(':').map(Number);
-    if (isNaN(h)) return val;
-    const period = h >= 12 ? 'PM' : 'AM';
-    const formattedH = h % 12 || 12;
-    const formattedM = m !== undefined ? String(m).padStart(2, '0') : '00';
-    return `${String(formattedH).padStart(2, '0')}:${formattedM} ${period}`;
-  };
-
-  const handleCustomTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setCustomTimeValue(val);
-    if (val) {
-      const formatted = format24To12(val);
-      onUpdateOptions({ delivery_time: formatted });
-    }
+  const updateCustomTime = (newHour: string, newMinute: string, newPeriod: 'AM' | 'PM') => {
+    const formatted = `${newHour.padStart(2, '0')}:${newMinute.padStart(2, '0')} ${newPeriod}`;
+    onUpdateOptions({ delivery_time: formatted });
   };
 
   return (
@@ -298,35 +310,114 @@ export function CartItem({
 
           {/* Custom Time Selector */}
           {showCustomTimeInput && (
-            <div className="p-3 bg-orange-50/50 border border-orange-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-xs font-bold text-orange-900 block">
-                  Custom Break Time
-                </span>
-                <span className="text-[0.65rem] text-orange-700 font-medium">
-                  Enter your exact break time if not listed above:
-                </span>
+            <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-3 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-black text-orange-950 block">
+                    Custom Break Time
+                  </span>
+                  <span className="text-[0.68rem] text-orange-800 font-medium">
+                    Set your exact break time with hour, minute and AM / PM:
+                  </span>
+                </div>
+                {/* Visual Period Badge (Morning / Afternoon / Night) */}
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black border self-start sm:self-auto ${currentTimeInfo.badgeClass}`}
+                >
+                  <span>{currentTimeInfo.icon}</span>
+                  <span>{currentTimeInfo.label} Slot</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={customTimeValue}
-                  onChange={handleCustomTimeChange}
-                  className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-orange-500 shadow-inner"
-                />
+
+              {/* Time Controls: Hour : Minute + AM / PM Toggle */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-1.5 shadow-xs">
+                  <Clock className="w-3.5 h-3.5 text-gray-400" />
+                  <label htmlFor={`hour-select-${item.meal_id}`} className="sr-only">Hour</label>
+                  <select
+                    id={`hour-select-${item.meal_id}`}
+                    value={parsedTime.hour}
+                    onChange={(e) => updateCustomTime(e.target.value, parsedTime.minute, parsedTime.period)}
+                    className="bg-transparent text-xs font-black text-gray-900 focus:outline-none cursor-pointer"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs font-black text-gray-400">:</span>
+                  <label htmlFor={`minute-select-${item.meal_id}`} className="sr-only">Minute</label>
+                  <select
+                    id={`minute-select-${item.meal_id}`}
+                    value={parsedTime.minute}
+                    onChange={(e) => updateCustomTime(parsedTime.hour, e.target.value, parsedTime.period)}
+                    className="bg-transparent text-xs font-black text-gray-900 focus:outline-none cursor-pointer"
+                  >
+                    {minuteOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* AM / PM Segmented Control */}
+                <div className="flex bg-white p-0.5 rounded-xl border border-gray-200 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => updateCustomTime(parsedTime.hour, parsedTime.minute, 'AM')}
+                    className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                      parsedTime.period === 'AM'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    AM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateCustomTime(parsedTime.hour, parsedTime.minute, 'PM')}
+                    className={`px-3 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                      parsedTime.period === 'PM'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    PM
+                  </button>
+                </div>
+
+                {/* Current Selected Value Pill */}
                 <span className="text-xs font-black text-orange-600 bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-xs">
                   {deliveryTime}
+                </span>
+              </div>
+
+              {/* Contextual Note below explaining whether it's Morning, Afternoon, or Night */}
+              <div className="flex items-center gap-2 text-[0.7rem] font-semibold text-orange-950/80 bg-orange-100/70 px-3 py-1.5 rounded-xl border border-orange-200/70">
+                <Info className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                <span>
+                  <strong>Note:</strong> Delivery is scheduled for the <strong>{currentTimeInfo.label}</strong> ({currentTimeInfo.description}).
                 </span>
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1 text-[0.68rem] text-gray-500">
-            <span className="flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-              <span>Target Delivery Slot: <strong className="text-gray-900 font-black">{deliveryTime}</strong></span>
+          <div className="flex flex-wrap items-center justify-between pt-1 gap-2 text-[0.68rem] text-gray-500">
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                <span>Target Delivery Slot: <strong className="text-gray-900 font-black">{deliveryTime}</strong></span>
+              </span>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.62rem] font-black border ${currentTimeInfo.badgeClass}`}>
+                <span>{currentTimeInfo.icon}</span>
+                <span>{currentTimeInfo.label}</span>
+              </span>
+            </div>
+            <span className="text-gray-400 font-medium">
+              Cooked & delivered hot for your {currentTimeInfo.label.toLowerCase()} break
             </span>
-            <span className="text-gray-400 font-medium">Cooked & delivered hot for your break</span>
           </div>
         </div>
       )}
@@ -466,21 +557,78 @@ export function CartItem({
 
             {/* Editable Custom Time Input */}
             {showCustomTimeInput && (
-              <div className="p-3 bg-orange-50/50 border border-orange-200 rounded-2xl space-y-1.5">
+              <div className="p-3 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-orange-800">
-                    Custom Time
+                  <span className="text-xs font-bold text-orange-900">
+                    Custom Slot
                   </span>
-                  <span className="text-xs font-bold text-orange-600 bg-white px-2 py-0.5 rounded border border-orange-200">
-                    {deliveryTime}
-                  </span>
+                  <div
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.62rem] font-black border ${currentTimeInfo.badgeClass}`}
+                  >
+                    <span>{currentTimeInfo.icon}</span>
+                    <span>{currentTimeInfo.label}</span>
+                  </div>
                 </div>
-                <input
-                  type="time"
-                  value={customTimeValue}
-                  onChange={handleCustomTimeChange}
-                  className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-orange-500"
-                />
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1 shadow-xs flex-1">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <select
+                      value={parsedTime.hour}
+                      onChange={(e) => updateCustomTime(e.target.value, parsedTime.minute, parsedTime.period)}
+                      className="bg-transparent text-xs font-black text-gray-900 focus:outline-none cursor-pointer flex-1"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-xs font-black text-gray-400">:</span>
+                    <select
+                      value={parsedTime.minute}
+                      onChange={(e) => updateCustomTime(parsedTime.hour, e.target.value, parsedTime.period)}
+                      className="bg-transparent text-xs font-black text-gray-900 focus:outline-none cursor-pointer flex-1"
+                    >
+                      {minuteOptions.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* AM / PM Segmented Control */}
+                  <div className="flex bg-white p-0.5 rounded-xl border border-gray-200 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => updateCustomTime(parsedTime.hour, parsedTime.minute, 'AM')}
+                      className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                        parsedTime.period === 'AM'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      AM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCustomTime(parsedTime.hour, parsedTime.minute, 'PM')}
+                      className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
+                        parsedTime.period === 'PM'
+                          ? 'bg-orange-600 text-white shadow-xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      PM
+                    </button>
+                  </div>
+                </div>
+
+                {/* Contextual Note */}
+                <div className="text-[0.68rem] font-semibold text-orange-950/80 bg-orange-100/70 px-2.5 py-1 rounded-xl border border-orange-200/70">
+                  Note: Scheduled for <strong>{currentTimeInfo.label}</strong> ({currentTimeInfo.description})
+                </div>
               </div>
             )}
 

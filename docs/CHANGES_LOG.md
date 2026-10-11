@@ -4,6 +4,29 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-11] - Custom Delivery Time AM/PM Controls & Time-of-Day Note (Morning/Afternoon/Night)
+- **Date & Time:** 2026-10-11 23:08 IST
+- **Objective:** Enable clear AM / PM selection for custom delivery break slots in the cart, eliminating native 24-hour browser ambiguities (e.g. typing 02:00 defaulting to 02:00 AM). In addition, display contextual time-of-day indicators (Morning, Afternoon, Evening, Night) beside and below the selected time slot.
+- **Implementation Plan:**
+  1. Add `getTimeOfDayInfo` utility in `lib/utils/format.ts` to identify whether a slot is Morning, Afternoon, Evening, or Night, along with appropriate badges, icons, and meal context.
+  2. Implement interactive 12-hour hour/minute controls and explicit `[ AM ] [ PM ]` segmented toggle buttons for custom break time selection in `components/cart/cart-item.tsx`.
+  3. Display a dedicated note beside/below the chosen delivery slot showing the time-of-day period (Morning, Afternoon, Evening, or Night) for both quick slots and custom time slots.
+  4. Ensure both Daily lunch break slots and Weekly/Monthly preference time inputs support the AM/PM toggle and time-of-day notes.
+  5. Run tests and type-checks (`npm test`, `npx tsc --noEmit`) to verify 0 regressions.
+- **Files Modified / Created:**
+  - `lib/utils/format.ts` - Added `getTimeOfDayInfo` utility detecting Morning, Afternoon, Evening, Night, or Late Night with icons and styling classes.
+  - `components/cart/cart-item.tsx` - Replaced raw 24-hr time input with 12-hour hour/minute dropdowns, explicit `[ AM ] [ PM ]` segmented toggle buttons, and dynamic Morning/Afternoon/Night notes beside and below the slot.
+  - `components/checkout/order-summary.tsx` - Added time-of-day badge (`☀️ Morning`, `🌤️ Afternoon`, `🌙 Night`) in checkout line review.
+  - `components/checkout/checkout-form.tsx` - Added time-of-day period label in celebration dialog target break slot.
+  - `__tests__/lib/utils/format.test.ts` - Added 5 unit tests for `getTimeOfDayInfo` time slot classifications.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript compiler errors.
+  - `npm test`: 4 test suites passed, 52/52 tests passed with 0 failures.
+
+---
+
 ### [2026-10-11] - Option A: Clean Whole Rupee Pricing Standard & Price Parity
 - **Date & Time:** 2026-10-11 20:20 IST
 - **Objective:** Fix price discrepancy between Explore menu card (e.g. ₹149.78 / ₹198.97) and Shopping Bag / Cart Summary (₹150 / ₹199) that caused customer confusion and fraud concerns. Implement Option A (Clean Whole Rupee standard) across the database, service queries, and cart computations.
