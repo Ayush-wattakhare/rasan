@@ -26,6 +26,7 @@ import { useCart } from '@/lib/hooks/use-cart';
 import { orderService } from '@/lib/services/order-service';
 import { paymentService } from '@/lib/services/payment-service';
 import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
+import { getTimeOfDayInfo } from '@/lib/utils/format';
 import type { Address, PaymentMethod } from '@/types';
 
 interface CheckoutFormProps {
@@ -172,16 +173,16 @@ export function CheckoutForm({
               </div>
               <div>
                 <span className="text-gray-400 font-bold uppercase text-[0.65rem] block mb-0.5">
-                  {isSub ? 'First Delivery' : 'Est. Delivery'}
+                  {isSub ? 'First Delivery' : 'Target Break Slot'}
                 </span>
                 <span className="font-extrabold text-orange-600 text-sm flex items-center gap-1">
                   {isSub ? (
                     <>
-                      <Calendar className="w-3.5 h-3.5" /> Tomorrow ({subscriptionItem?.delivery_time || '12:30 PM'})
+                      <Calendar className="w-3.5 h-3.5" /> Tomorrow ({subscriptionItem?.delivery_time || '12:30 PM'} • {getTimeOfDayInfo(subscriptionItem?.delivery_time || '12:30 PM').label})
                     </>
                   ) : (
                     <>
-                      <Clock className="w-3.5 h-3.5" /> 25 - 35 Mins
+                      <Clock className="w-3.5 h-3.5" /> {cart.items[0]?.delivery_time || '12:30 PM'} ({getTimeOfDayInfo(cart.items[0]?.delivery_time || '12:30 PM').label})
                     </>
                   )}
                 </span>

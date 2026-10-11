@@ -34,7 +34,7 @@ export type PricingInput = {
 
 export function getItemPricing(item: PricingInput) {
   const subType: SubscriptionType = item.subscription_type || 'one-time';
-  const price = Number(item.price) || 0;
+  const price = Math.round(Number(item.price) || 0);
   const quantity = Math.max(1, item.quantity || 1);
   const daysCount = Math.max(1, (item.delivery_days || []).length);
 
@@ -50,10 +50,10 @@ export function getItemPricing(item: PricingInput) {
   }
 
   const discountPct = SUBSCRIPTION_DISCOUNT_PCT[subType] ?? 0;
-  const basePrice = price * multiplier * quantity;
+  const basePrice = Math.round(price * multiplier * quantity);
   const savings = Math.round((basePrice * discountPct) / 100);
   const finalPrice = Math.max(0, basePrice - savings);
-  const pricePerMeal = multiplier > 0 ? finalPrice / (multiplier * quantity) : price;
+  const pricePerMeal = multiplier > 0 ? Math.round(finalPrice / (multiplier * quantity)) : price;
 
   return {
     subType,

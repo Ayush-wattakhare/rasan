@@ -86,7 +86,15 @@ export function AddToCartButton({
         delivery_time: '12:00 PM',
       };
 
-      addItem(newCartItem);
+      const result = addItem(newCartItem);
+      if (!result.success && result.conflict) {
+        toast({
+          title: 'Different Kitchen',
+          description: 'Your bag contains food from another chef. Please clear your bag to order from here.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       toast({
         title: 'Added to cart',
