@@ -44,4 +44,18 @@ describe('MealCard', () => {
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/meals/1')
   })
+
+  it('renders the quick add to cart button', () => {
+    render(<MealCard meal={mockMeal} />)
+    const quickAddBtn = screen.getByTestId('quick-add-btn')
+    expect(quickAddBtn).toBeInTheDocument()
+    expect(quickAddBtn).not.toBeDisabled()
+  })
+
+  it('disables quick add button when meal is sold out (stock = 0)', () => {
+    const soldOutMeal = { ...mockMeal, stock: 0 }
+    render(<MealCard meal={soldOutMeal} />)
+    const quickAddBtn = screen.getByTestId('quick-add-btn')
+    expect(quickAddBtn).toBeDisabled()
+  })
 })

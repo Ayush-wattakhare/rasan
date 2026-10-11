@@ -317,7 +317,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
 export function useCartContext() {
   const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error('useCartContext must be used within a CartProvider');
+    return {
+      cart: {
+        items: [],
+        subtotal: 0,
+        base_subtotal: 0,
+        total_savings: 0,
+        platform_fee: PLATFORM_FEE,
+        delivery_fee: DELIVERY_FEE,
+        total: 0,
+      },
+      addItem: () => {},
+      updateQuantity: () => {},
+      updateItemOptions: () => {},
+      removeItem: () => {},
+      clearCart: () => {},
+      itemCount: 0,
+      isLoading: false,
+    };
   }
   return context;
 }

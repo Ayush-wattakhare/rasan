@@ -32,7 +32,13 @@ const days = [
   { id: 'sunday', label: 'Sun' },
 ];
 
-const STANDARD_TIMES = ['12:00 PM', '01:00 PM', '08:00 PM'];
+const LUNCH_BREAK_SLOTS = [
+  { time: '12:00 PM', label: '12:00 - 12:30 PM', tag: 'Early Lunch / Recess' },
+  { time: '12:30 PM', label: '12:30 - 01:00 PM', tag: 'College Break' },
+  { time: '01:00 PM', label: '01:00 - 01:30 PM', tag: 'Office Lunch' },
+  { time: '01:30 PM', label: '01:30 - 02:00 PM', tag: 'Late Lunch' },
+  { time: '07:30 PM', label: '07:30 - 08:30 PM', tag: 'Dinner Break' },
+];
 
 export function CartItem({
   item,
@@ -45,11 +51,11 @@ export function CartItem({
     item.delivery_days && item.delivery_days.length > 0
       ? item.delivery_days
       : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
-  const deliveryTime = item.delivery_time || '12:00 PM';
+  const deliveryTime = item.delivery_time || '12:30 PM';
 
   const [expanded, setExpanded] = useState(subType !== 'one-time');
   const [showCustomTimeInput, setShowCustomTimeInput] = useState(
-    !STANDARD_TIMES.includes(deliveryTime)
+    !LUNCH_BREAK_SLOTS.some((s) => s.time === deliveryTime) && deliveryTime !== '12:00 PM' && deliveryTime !== '12:30 PM'
   );
   const [customTimeValue, setCustomTimeValue] = useState('');
 
@@ -230,8 +236,110 @@ export function CartItem({
         </div>
       </div>
 
+      {/* Daily Lunch Break Slot Selector (For Students & Workers) */}
+      {subType === 'one-time' && (
+        <div className="mt-6 pt-6 border-t border-gray-100 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                    Lunch Break Delivery Slot
+                  </h4>
+                  <span className="text-[0.6rem] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
+                    Students & Workers
+                  </span>
+                </div>
+                <p className="text-[0.68rem] text-gray-500 font-medium">
+                  Fresh homemade meal delivered on time for your college recess or office break.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCustomTimeInput(!showCustomTimeInput)}
+              className="text-xs font-semibold text-orange-600 hover:underline flex items-center gap-1 self-start sm:self-center"
+            >
+              <Edit2 className="w-3 h-3" />
+              {showCustomTimeInput ? 'Use Quick Slots' : 'Custom Break Time'}
+            </button>
+          </div>
+
+          {/* Quick Break Slot Buttons */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {LUNCH_BREAK_SLOTS.map((slot) => {
+              const isSelected = deliveryTime === slot.time && !showCustomTimeInput;
+              return (
+                <button
+                  key={slot.time}
+                  type="button"
+                  onClick={() => {
+                    setShowCustomTimeInput(false);
+                    onUpdateOptions({ delivery_time: slot.time });
+                  }}
+                  className={`p-2.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-orange-600 border-orange-600 text-white shadow-md scale-[1.02]'
+                      : 'bg-gray-50 border-gray-100 hover:border-orange-200 text-gray-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-black tracking-tight">{slot.label}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                  <span
+                    className={`text-[0.6rem] font-bold uppercase tracking-wider block ${
+                      isSelected ? 'text-orange-100' : 'text-gray-400'
+                    }`}
+                  >
+                    {slot.tag}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom Time Selector */}
+          {showCustomTimeInput && (
+            <div className="p-3 bg-orange-50/50 border border-orange-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-orange-900 block">
+                  Custom Break Time
+                </span>
+                <span className="text-[0.65rem] text-orange-700 font-medium">
+                  Enter your exact break time if not listed above:
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={customTimeValue}
+                  onChange={handleCustomTimeChange}
+                  className="bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-orange-500 shadow-inner"
+                />
+                <span className="text-xs font-black text-orange-600 bg-white px-2.5 py-1.5 rounded-xl border border-orange-200 shadow-xs">
+                  {deliveryTime}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1 text-[0.68rem] text-gray-500">
+            <span className="flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+              <span>Target Delivery Slot: <strong className="text-gray-900 font-black">{deliveryTime}</strong></span>
+            </span>
+            <span className="text-gray-400 font-medium">Cooked & delivered hot for your break</span>
+          </div>
+        </div>
+      )}
+
       {/* Expandable Schedule Area (For Weekly & Monthly Plans) */}
-      {(subType !== 'one-time' || expanded) && (
+      {subType !== 'one-time' && (
         <div className="mt-6 pt-6 border-t border-gray-100 flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-top-2 duration-300">
           {/* Days selector */}
           <div className="space-y-3 flex-1">
@@ -320,7 +428,7 @@ export function CartItem({
           <div className="space-y-3 md:w-80 border-t md:border-t-0 md:border-l md:pl-6 border-gray-100">
             <div className="flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-xs font-bold text-gray-800 uppercase tracking-wider">
-                <Clock className="w-4 h-4 text-orange-600" /> Delivery Time Slot
+                <Clock className="w-4 h-4 text-orange-600" /> Lunch Break Slot
               </h4>
               <button
                 type="button"
@@ -333,22 +441,32 @@ export function CartItem({
             </div>
 
             {/* Standard Quick Buttons */}
-            <div className="grid grid-cols-3 gap-1.5">
-              {STANDARD_TIMES.map((t) => (
+            <div className="grid grid-cols-2 gap-1.5">
+              {LUNCH_BREAK_SLOTS.map((slot) => (
                 <button
-                  key={t}
+                  key={slot.time}
                   type="button"
                   onClick={() => {
                     setShowCustomTimeInput(false);
-                    onUpdateOptions({ delivery_time: t });
+                    onUpdateOptions({ delivery_time: slot.time });
                   }}
-                  className={`py-2 rounded-xl text-xs font-semibold transition-all border ${
-                    deliveryTime === t && !showCustomTimeInput
+                  className={`p-2 rounded-xl text-xs font-semibold transition-all border text-left ${
+                    deliveryTime === slot.time && !showCustomTimeInput
                       ? 'bg-orange-600 border-orange-600 text-white shadow-sm'
                       : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200'
                   }`}
                 >
-                  {t}
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[0.7rem]">{slot.label}</span>
+                    {deliveryTime === slot.time && !showCustomTimeInput && (
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    )}
+                  </div>
+                  <span className={`text-[0.55rem] block uppercase font-bold ${
+                    deliveryTime === slot.time && !showCustomTimeInput ? 'text-orange-100' : 'text-gray-400'
+                  }`}>
+                    {slot.tag}
+                  </span>
                 </button>
               ))}
             </div>
@@ -377,7 +495,7 @@ export function CartItem({
             <div className="flex items-start gap-1.5 pt-1 text-xs text-gray-500">
               <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
               <span>
-                <strong>2-Hour Rule:</strong> You can edit preference time slot anytime up to 2 hours before delivery.
+                <strong>2-Hour Rule:</strong> You can edit break slot anytime up to 2 hours before delivery.
               </span>
             </div>
           </div>

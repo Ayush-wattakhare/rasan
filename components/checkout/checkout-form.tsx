@@ -173,7 +173,7 @@ export function CheckoutForm({
               </div>
               <div>
                 <span className="text-gray-400 font-bold uppercase text-[0.65rem] block mb-0.5">
-                  {isSub ? 'First Delivery' : 'Est. Delivery'}
+                  {isSub ? 'First Delivery' : 'Target Break Slot'}
                 </span>
                 <span className="font-extrabold text-orange-600 text-sm flex items-center gap-1">
                   {isSub ? (
@@ -182,7 +182,7 @@ export function CheckoutForm({
                     </>
                   ) : (
                     <>
-                      <Clock className="w-3.5 h-3.5" /> 25 - 35 Mins
+                      <Clock className="w-3.5 h-3.5" /> {cart.items[0]?.delivery_time || '12:30 PM'}
                     </>
                   )}
                 </span>

@@ -1,27 +1,75 @@
+'use client';
+
 import Link from 'next/link';
 import Image from 'next/image';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils/format';
-import { Star, Clock } from 'lucide-react';
+import { Star, Clock, Check, Plus } from 'lucide-react';
+import { useCart } from '@/lib/hooks/use-cart';
+import { useToast } from '@/lib/hooks/use-toast';
 
 interface MealCardProps {
   meal: {
     id: string;
     name: string;
-    description: string;
+    description?: string;
     price: number;
     image_url: string | null;
-    is_vegetarian: boolean;
+    is_vegetarian?: boolean;
+    is_veg?: boolean;
     rating: number | null;
     stock: number | null;
+    vendor_id?: string;
     vendors?: {
+      id?: string;
       business_name: string;
     };
   };
 }
 
 function MealCard({ meal }: MealCardProps) {
+  const { addItem } = useCart();
+  const { toast } = useToast();
+  const [isAdded, setIsAdded] = useState(false);
+
+  const handleQuickAdd = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (meal.stock === 0) return;
+
+    try {
+      const vendorId = meal.vendor_id || meal.vendors?.id || 'default_vendor';
+      addItem({
+        meal_id: meal.id,
+        vendor_id: vendorId,
+        name: meal.name,
+        price: meal.price,
+        quantity: 1,
+        image_url: meal.image_url || undefined,
+        is_veg: meal.is_vegetarian ?? (meal as any).is_veg ?? true,
+        subscription_type: 'one-time',
+        delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        delivery_time: '12:30 PM',
+      });
+
+      setIsAdded(true);
+      setTimeout(() => setIsAdded(false), 1400);
+
+      toast({
+        title: 'Added to Bag! 🍱',
+        description: `${meal.name} is now in your cart. You can select your lunch break slot in your bag.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Different Kitchen',
+        description: error?.message || 'You can only order from one home kitchen at a time.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <Link href={`/meals/${meal.id}`} className="group block relative" data-testid="meal-card">
       <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-red-600 rounded-[1.5rem] sm:rounded-[2rem] blur opacity-0 group-hover:opacity-10 transition duration-500"></div>
@@ -117,10 +165,22 @@ function MealCard({ meal }: MealCardProps) {
             </div>
             
             <button
+              type="button"
+              onClick={handleQuickAdd}
               disabled={meal.stock === 0}
-              className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-[#1A1A1A] text-white flex items-center justify-center hover:bg-orange-600 transition-all duration-300 shadow-md hover:scale-110 active:scale-95 group/btn disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-[#1A1A1A]"
+              aria-label={`Add ${meal.name} to cart`}
+              data-testid="quick-add-btn"
+              className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition-all duration-300 shadow-md group/btn cursor-pointer ${
+                isAdded
+                  ? 'bg-emerald-600 text-white scale-105'
+                  : 'bg-[#1A1A1A] text-white hover:bg-orange-600 hover:scale-110 active:scale-95'
+              } disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-[#1A1A1A]`}
             >
-               <span className="text-base font-black group-hover/btn:rotate-90 transition-transform">+</span>
+              {isAdded ? (
+                <Check className="w-4 h-4 text-white stroke-[3] animate-in zoom-in-50 duration-200" />
+              ) : (
+                <span className="text-base font-black group-hover/btn:rotate-90 transition-transform leading-none">+</span>
+              )}
             </button>
           </div>
         </CardContent>

@@ -61,6 +61,11 @@ export function OrderSummary({
                   <span className="text-xs text-muted-foreground">
                     Qty: {item.quantity}
                   </span>
+                  {item.delivery_time && (
+                    <span className="text-[0.65rem] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
+                      Slot: {item.delivery_time}
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm font-medium mt-1">
                   ₹{(item.price * item.quantity).toFixed(2)}
