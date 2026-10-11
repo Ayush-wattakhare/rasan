@@ -157,7 +157,7 @@ export default function VendorDashboardPage() {
               variant="outline"
               className="border-gray-200 text-gray-700 font-black rounded-xl h-12 uppercase tracking-widest text-xs"
             >
-              <Link href="/vendor-setup">Configure Kitchen Profile</Link>
+              <Link href="/become-vendor">Configure Kitchen Profile</Link>
             </Button>
           </div>
         </div>

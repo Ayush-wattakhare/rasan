@@ -42,13 +42,29 @@ export async function GET(
       }
     }
 
+    // The kitchen owner can always read their own circle.
+    let isOwner = false;
+    if (user) {
+      const { data: own } = await serviceClient
+        .from('vendors')
+        .select('id')
+        .eq('id', vendorId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      isOwner = !!own;
+    }
+    const canReadMessages = isActiveSubscriber || isOwner;
+
     // 3. Fetch broadcast posts & messages
-    const { data: rawBroadcasts } = await serviceClient
-      .from('notifications')
-      .select('id, title, message, data, created_at')
-      .eq('type', 'system')
-      .order('created_at', { ascending: true })
-      .limit(30);
+    // Kitchen Circle messages are for active subscribers and the owner only.
+    const { data: rawBroadcasts } = canReadMessages
+      ? await serviceClient
+          .from('notifications')
+          .select('id, title, message, data, created_at')
+          .eq('type', 'system')
+          .order('created_at', { ascending: true })
+          .limit(30)
+      : { data: [] as any[] };
 
     // Filter for this vendor with deduplication
     const seen = new Set<string>();
@@ -57,9 +73,7 @@ export async function GET(
         (b) =>
           b.data &&
           (b.data as any).is_community_message &&
-          ((b.data as any).vendor_id === vendorId ||
-           (b.data as any).vendor_id === 'b647f5cb-a5b3-4219-a34e-52261368de40' ||
-           (b.data as any).vendor_id === '70c88505-f256-4004-8b2a-db27e15d140f')
+          (b.data as any).vendor_id === vendorId
       )
       .filter((b) => {
         const key = `${(b.data as any)?.sender_name || ''}_${b.message?.trim()}`;
@@ -112,7 +126,7 @@ export async function GET(
   } catch (error: any) {
     console.error('Error fetching community feed:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to load community feed' },
+      { error: 'Failed to load community feed' },
       { status: 500 }
     );
   }
@@ -147,7 +161,14 @@ export async function POST(
       .eq('id', user.id)
       .single();
 
-    const isVendor = profile?.role === 'vendor';
+    // Posting as the chef requires owning *this* kitchen, not just the vendor role.
+    const { data: ownKitchen } = await serviceClient
+      .from('vendors')
+      .select('id')
+      .eq('id', vendorId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const isVendor = !!ownKitchen;
 
     // Verify customer has active subscription unless they are the vendor
     if (!isVendor) {

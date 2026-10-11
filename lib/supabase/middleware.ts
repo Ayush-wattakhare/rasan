@@ -1,6 +1,16 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/types/database.types';
+import type { UserRole } from '@/types';
+import {
+  ROLE_HOME,
+  canAccessPath,
+  isProtectedPath,
+  isUserRole,
+  roleFromAppMetadata,
+} from '@/lib/auth/roles';
+import { safeRedirectPath } from '@/lib/utils/safe-redirect';
+import { devToolsEnabled } from '@/lib/dev-tools';
 
 /**
  * Creates an optimized Supabase client for middleware
@@ -18,6 +28,15 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/meals';
     return NextResponse.redirect(url);
+  }
+
+  // Local dev tools (/dev/*, /admin/* tool pages) don't exist unless explicitly enabled.
+  // Rewriting here gives a real 404 status (a notFound() in a streamed layout can't).
+  const isDevToolPath =
+    pathname === '/dev' || pathname.startsWith('/dev/') ||
+    pathname === '/admin' || pathname.startsWith('/admin/');
+  if (isDevToolPath && !devToolsEnabled()) {
+    return NextResponse.rewrite(new URL('/_not-found-dev-tools', request.url));
   }
 
   // Fast-path: Skip auth checks on public pages & static assets
@@ -77,28 +96,7 @@ export async function updateSession(request: NextRequest) {
       }
     );
 
-  // Protected routes configuration - Require login for meals/menu and cart
-  const protectedRoutes = {
-    customer: ['/dashboard', '/orders', '/subscriptions', '/profile', '/checkout', '/meals', '/cart'],
-    vendor: ['/vendor-dashboard', '/menu-management', '/vendor-orders', '/analytics', '/vendor-profile'],
-    delivery: ['/delivery-dashboard', '/available-orders', '/active-deliveries', '/operator-profile', '/earnings'],
-    admin: [
-      '/admin',
-      '/admin-dashboard', 
-      '/user-management', 
-      '/vendor-management', 
-      '/delivery-management', 
-      '/support-management', 
-      '/live-ops', 
-      '/refunds-ledger', 
-      '/broadcasts',
-      '/admin-profile'
-    ],
-  };
-
-  const isProtectedRoute = Object.values(protectedRoutes)
-    .flat()
-    .some((route) => pathname.startsWith(route));
+  const isProtectedRoute = isProtectedPath(pathname);
 
   // Fast cookie check: if user has no Supabase auth token cookie, avoid remote network call
   const hasAuthCookie = request.cookies
@@ -132,79 +130,43 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If user is authenticated, determine role FAST from JWT metadata first
-  if (user && isProtectedRoute) {
-    let userRole = (user.user_metadata?.role || user.app_metadata?.role) as string | undefined;
-
-    // Only query DB if role is not in JWT metadata (rare fallback)
+  // Resolve role: app_metadata (service-role controlled, synced from profiles by
+  // migration 003) first, profiles table as fallback. Never user_metadata, which
+  // users can edit themselves.
+  let userRole: UserRole | null = null;
+  const isAuthPage = pathname === '/login' || pathname === '/register';
+  if (user && (isProtectedRoute || isAuthPage)) {
+    userRole = roleFromAppMetadata(user);
     if (!userRole) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single();
-      userRole = profile?.role;
-    }
-
-    if (userRole) {
-      const allowedRoutes = protectedRoutes[userRole as keyof typeof protectedRoutes] || [];
-      const commonLoggedInRoutes = ['/meals', '/cart'];
-      const hasAccess = 
-        allowedRoutes.some((route) => pathname.startsWith(route)) ||
-        commonLoggedInRoutes.some((route) => pathname.startsWith(route));
-
-      if (!hasAccess) {
-        const url = request.nextUrl.clone();
-        switch (userRole) {
-          case 'customer':
-            url.pathname = '/dashboard';
-            break;
-          case 'vendor':
-            url.pathname = '/vendor-dashboard';
-            break;
-          case 'delivery':
-            url.pathname = '/delivery-dashboard';
-            break;
-          case 'admin':
-            url.pathname = '/admin-dashboard';
-            break;
-          default:
-            url.pathname = '/';
-        }
-        return NextResponse.redirect(url);
-      }
+        .maybeSingle();
+      userRole = isUserRole(profile?.role) ? profile.role : null;
     }
   }
 
-  // Redirect authenticated users away from auth pages
-  if (user && (pathname === '/login' || pathname === '/register')) {
-    const userRole = user.user_metadata?.role || user.app_metadata?.role || 'customer';
+  if (user && isProtectedRoute && userRole && !canAccessPath(userRole, pathname)) {
     const url = request.nextUrl.clone();
-    
+    url.pathname = ROLE_HOME[userRole];
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
+
+  // Redirect authenticated users away from auth pages
+  if (user && isAuthPage) {
+    const url = request.nextUrl.clone();
+
     // If redirectTo is provided and valid, send them back to their requested page
     const redirectTo = request.nextUrl.searchParams.get('redirectTo');
-    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
-      url.pathname = redirectTo;
-      url.search = '';
-      return NextResponse.redirect(url);
+    const safePath = safeRedirectPath(redirectTo, '');
+    if (safePath) {
+      return NextResponse.redirect(new URL(safePath, request.nextUrl.origin));
     }
 
-    switch (userRole) {
-      case 'customer':
-        url.pathname = '/dashboard';
-        break;
-      case 'vendor':
-        url.pathname = '/vendor-dashboard';
-        break;
-      case 'delivery':
-        url.pathname = '/delivery-dashboard';
-        break;
-      case 'admin':
-        url.pathname = '/admin-dashboard';
-        break;
-      default:
-        url.pathname = '/';
-    }
+    url.pathname = ROLE_HOME[userRole ?? 'customer'];
+    url.search = '';
     return NextResponse.redirect(url);
   }
 

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth/guards';
+import { transitionOrder } from '@/lib/orders/transition';
+import { withoutDeliveryOtp } from '@/lib/utils/delivery-otp';
 
 export async function GET() {
   try {
@@ -36,6 +39,8 @@ export async function GET() {
       .from('orders')
       .select('*')
       .eq('vendor_id', vendor.id)
+      // Online orders reach the kitchen only once paid; abandoned checkouts stay hidden.
+      .or('payment_method.eq.cash,payment_status.in.(paid,refunded)')
       .order('created_at', { ascending: false });
 
     if (ordersError) {
@@ -44,7 +49,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      orders: orders || [],
+      orders: (orders || []).map(withoutDeliveryOtp),
       vendor,
     });
   } catch (error: any) {
@@ -65,71 +70,31 @@ export async function POST(request: Request) {
 }
 
 async function handleUpdateStatus(request: Request) {
+  const auth = await requireRole('vendor');
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
-    const { orderId, status } = body;
+    const { orderId, status } = body ?? {};
 
     if (!orderId || !status) {
-      return NextResponse.json(
-        { error: 'Missing orderId or status' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing orderId or status' }, { status: 400 });
     }
 
-    // Database enum order_status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'cancelled'
-    const dbStatus = status === 'ready_for_pickup' ? 'ready' : status;
-
-    const serviceClient = createServiceClient();
-
-    const updatePayload: any = {
-      status: dbStatus,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data: updatedOrder, error: updateError } = await serviceClient
-      .from('orders')
-      .update(updatePayload)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Order update database error:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-
-    // Send customer notification when food is ready
-    if (dbStatus === 'ready' && updatedOrder?.customer_id) {
-      try {
-        await serviceClient.from('notifications').insert({
-          user_id: updatedOrder.customer_id,
-          type: 'order',
-          title: '🍱 Meal Fresh & Ready for Pickup!',
-          message: `Your food for Order #${updatedOrder.id.slice(0, 8)} is freshly packed and waiting for delivery partner pickup.`,
-          is_read: false,
-        });
-      } catch {}
+    // Only the order's own kitchen, only allowed transitions (lib/orders/transition).
+    const result = await transitionOrder({ orderId, actor: 'vendor', userId: auth.user.id, status });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
     return NextResponse.json({
       success: true,
-      order: updatedOrder,
+      message: 'Order status updated successfully',
+      order: result.order,
+      data: { order: result.order },
     });
-  } catch (error: any) {
-    console.error('Vendor orders PATCH error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to update order status' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('Vendor order status error:', error);
+    return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
   }
 }

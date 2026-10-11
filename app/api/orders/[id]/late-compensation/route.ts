@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/guards';
 
 export async function POST(
   request: NextRequest,
@@ -7,18 +8,15 @@ export async function POST(
 ) {
   try {
     const { id: orderId } = await params;
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+    const user = auth.user;
 
     const serviceClient = createServiceClient();
 
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
-      .select('id, customer_id, status, total, estimated_delivery_time, created_at')
+      .select('id, customer_id, status, total, estimated_delivery_time, actual_delivery_time, created_at, compensated_at')
       .eq('id', orderId)
       .single();
 
@@ -26,7 +24,7 @@ export async function POST(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // Must be owner or admin
+    // Must be the customer who placed the order
     if (order.customer_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -38,11 +36,28 @@ export async function POST(
       );
     }
 
-    // Calculate delay: if estimated delivery time was exceeded by > 15 minutes
-    const createdTime = new Date(order.created_at).getTime();
-    const estimatedMinutes = parseInt(order.estimated_delivery_time || '35', 10) || 35;
-    const expectedDeliveryTime = createdTime + estimatedMinutes * 60 * 1000;
-    const actualDeliveryTime = Date.now();
+    if (order.compensated_at) {
+      return NextResponse.json(
+        { eligible: false, message: 'Compensation has already been issued for this order.' },
+        { status: 409 }
+      );
+    }
+
+    // Delay = actual delivery time vs the promised time (estimate, or 35 min after ordering).
+    const DEFAULT_ETA_MINUTES = 35;
+    const expectedDeliveryTime = order.estimated_delivery_time
+      ? new Date(order.estimated_delivery_time).getTime()
+      : new Date(order.created_at).getTime() + DEFAULT_ETA_MINUTES * 60 * 1000;
+    const actualDeliveryTime = order.actual_delivery_time
+      ? new Date(order.actual_delivery_time).getTime()
+      : NaN;
+
+    if (!Number.isFinite(expectedDeliveryTime) || !Number.isFinite(actualDeliveryTime)) {
+      return NextResponse.json({
+        eligible: false,
+        message: 'Delivery time is not recorded for this order.',
+      });
+    }
 
     const delayMinutes = Math.round((actualDeliveryTime - expectedDeliveryTime) / 60000);
 
@@ -53,8 +68,27 @@ export async function POST(
       });
     }
 
-    // Issue 15% late compensation credit
+    // Issue 15% late compensation credit, once per order.
     const compensationAmount = (order.total * 15) / 100;
+
+    const { data: claimed, error: claimError } = await serviceClient
+      .from('orders')
+      .update({ compensated_at: new Date().toISOString() })
+      .eq('id', order.id)
+      .is('compensated_at', null)
+      .select('id')
+      .maybeSingle();
+
+    if (claimError) {
+      console.error('Late compensation claim error:', claimError);
+      return NextResponse.json({ error: 'Failed to issue compensation' }, { status: 500 });
+    }
+    if (!claimed) {
+      return NextResponse.json(
+        { eligible: false, message: 'Compensation has already been issued for this order.' },
+        { status: 409 }
+      );
+    }
 
     // Send compensation notification
     await serviceClient.from('notifications').insert({
@@ -75,7 +109,7 @@ export async function POST(
   } catch (error: any) {
     console.error('Late compensation error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

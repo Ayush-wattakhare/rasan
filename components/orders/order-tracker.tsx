@@ -102,9 +102,13 @@ export function OrderTracker({
         orderNumber={order.order_number}
         totalAmount={order.total}
         currentStatus={order.status}
-        onSuccess={() => {
+        onSuccess={(paymentStatus) => {
           onRefresh?.();
-          onOrderUpdated?.({ ...order, status: 'cancelled', payment_status: 'refunded' });
+          onOrderUpdated?.({
+            ...order,
+            status: 'cancelled',
+            payment_status: (paymentStatus as typeof order.payment_status) || order.payment_status,
+          });
         }}
       />
 

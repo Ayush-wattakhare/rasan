@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export default async function CustomerOrderDetailsPage({ params }: OrderPageProp
   // Get order
   const { data: order, error } = await supabase
     .from('orders')
-    .select('*')
+    .select(`*, ${HANDOVER_EMBED}`)
     .eq('id', id)
     .eq('customer_id', user.id)
     .single();

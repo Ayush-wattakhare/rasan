@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import { 
   ShieldCheck, User, MapPin, Phone, Mail, 
@@ -38,13 +38,15 @@ export default async function UserDossierPage(props: {
 
   if (profileError || !targetProfile) notFound();
 
-  // Fetch role specific data
+  // Fetch role specific data. Bank details and documents are server-only
+  // columns, so read them with the service role (caller verified as admin above).
+  const serviceClient = createServiceClient();
   let roleData: any = null;
   if (targetProfile.role === 'vendor') {
-    const { data } = await supabase.from('vendors').select('*').eq('user_id', id).single();
+    const { data } = await serviceClient.from('vendors').select('*').eq('user_id', id).maybeSingle();
     roleData = data;
   } else if (targetProfile.role === 'delivery') {
-    const { data } = await supabase.from('delivery_partners').select('*').eq('user_id', id).single();
+    const { data } = await serviceClient.from('delivery_partners').select('*').eq('user_id', id).maybeSingle();
     roleData = data;
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { imageExtensionFor } from '@/lib/utils/image-upload';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
@@ -20,24 +21,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
+    // JPEG / PNG / WebP up to 5MB; extension derived from the type, not the filename.
+    const fileExt = imageExtensionFor(file);
+    if (!fileExt) {
       return NextResponse.json(
-        { error: 'File must be an image' },
-        { status: 400 }
-      );
-    }
-
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: 'File size must be less than 5MB' },
+        { error: 'Upload a JPEG, PNG or WebP image under 5MB' },
         { status: 400 }
       );
     }
 
     // Generate unique filename
-    const fileExt = file.name.split('.').pop();
     const fileName = `${user.id}-${Date.now()}.${fileExt}`;
     const filePath = `avatars/${fileName}`;
 
@@ -46,14 +39,13 @@ export async function POST(request: NextRequest) {
       .from('profiles')
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: true,
+        contentType: file.type,
+        upsert: false,
       });
 
     if (uploadError) {
-      return NextResponse.json(
-        { error: uploadError.message },
-        { status: 500 }
-      );
+      console.error('Avatar upload error:', uploadError);
+      return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 });
     }
 
     // Get public URL
@@ -68,10 +60,8 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id);
 
     if (updateError) {
-      return NextResponse.json(
-        { error: updateError.message },
-        { status: 500 }
-      );
+      console.error('Avatar profile update error:', updateError);
+      return NextResponse.json({ error: 'Failed to save avatar' }, { status: 500 });
     }
 
     return NextResponse.json({ avatar_url: publicUrl });

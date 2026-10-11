@@ -19,7 +19,7 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const redirectTo = searchParams?.get('redirectTo');
+  const redirectTo = searchParams?.get('redirectTo') || searchParams?.get('redirect');
 
   const executeLogin = async (loginEmail: string, loginPass: string) => {
     setError('');
@@ -34,24 +34,6 @@ export function LoginForm() {
       });
 
       if (signInError) {
-        // If invalid credentials, attempt quick demo sync in case dev database was refreshed
-        if (loginEmail.includes('@rasan.com')) {
-          try {
-            await fetch('/api/admin/create-demo-users', { method: 'POST' });
-            // Retry once after synchronization
-            const retry = await supabase.auth.signInWithPassword({
-              email: loginEmail,
-              password: loginPass,
-            });
-            if (retry.data?.user) {
-              await handlePostLoginRedirect(retry.data.user.id);
-              return;
-            }
-          } catch {
-            // Fallthrough to error display
-          }
-        }
-
         if (signInError.message.includes('Email not confirmed')) {
           setError('Please verify your email address. Check your inbox for the confirmation link.');
         } else if (signInError.message.includes('Invalid login credentials')) {

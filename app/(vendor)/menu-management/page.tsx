@@ -596,7 +596,7 @@ export default function VendorMenuManagementPage() {
         <div className="bg-red-50 text-red-600 p-6 rounded-3xl max-w-md mx-auto space-y-3">
           <h2 className="text-lg font-black uppercase">Menu Management Error</h2>
           <p className="font-semibold text-sm">{error}</p>
-          <Button onClick={() => window.location.href = '/vendor-setup'} className="w-full bg-orange-600 hover:bg-orange-700">Setup Vendor Profile</Button>
+          <Button onClick={() => window.location.href = '/become-vendor'} className="w-full bg-orange-600 hover:bg-orange-700">Setup Vendor Profile</Button>
           <Button onClick={loadVendorData} variant="outline" className="w-full">Retry</Button>
         </div>
       </div>

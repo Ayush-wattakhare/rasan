@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 export async function GET() {
   const supabase = await createClient();
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         is_read: false,
       }));
 
-      const { error } = await supabase.from('notifications').insert(notifications);
+      const { error } = await createServiceClient().from('notifications').insert(notifications);
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Send to specific user
-  const { error } = await supabase.from('notifications').insert([{
+  const { error } = await createServiceClient().from('notifications').insert([{
     user_id: user_id || user.id,
     type: type || 'system',
     title: title || 'Notification',

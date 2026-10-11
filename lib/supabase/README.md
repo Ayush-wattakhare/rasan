@@ -5,7 +5,7 @@ This directory contains the Supabase client configuration for the Rasan platform
 ## Files
 
 - **client.ts**: Browser client for use in Client Components
-- **server.ts**: Server client for use in Server Components, Server Actions, and Route Handlers
+- **server.ts**: `createClient()` (user-scoped, RLS applies) for Server Components, Server Actions and Route Handlers; `createServiceClient()` (service role, **bypasses RLS**) for server-only writes after the route has checked who the caller is and what they own
 - **middleware.ts**: Middleware client for authentication and session management
 - **types.ts**: Helper types and utility functions
 
@@ -69,15 +69,18 @@ export default async function MyServerComponent() {
 
 ### Middleware
 
-The middleware is configured in the root `middleware.ts` file and handles:
+Next.js 16 runs request middleware from the root `proxy.ts`, which calls `updateSession()` here. It handles:
 - Session refresh
 - Authentication verification
-- Role-based route protection
-- Automatic redirects for authenticated/unauthenticated users
+- Role-based page routing (role map in `lib/auth/roles.ts`; role from `app_metadata`, else `profiles`)
+- Redirects for signed-in / signed-out users
+
+It does **not** run on `/api` routes. Each route handler authenticates itself with
+`lib/auth/guards.ts` (`requireUser`, `requireRole`, `requireAdmin`).
 
 ## Environment Variables
 
-Required environment variables (see `.env.example`):
+Required environment variables (in `.env.local`):
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url

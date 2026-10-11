@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { createServiceClient } from '@/lib/supabase/server';
 
 export interface SupportTicket {
   id: string;
@@ -126,14 +127,10 @@ const MEMORY_TICKETS: SupportTicket[] = [
 ];
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const roleFilter = searchParams.get('role');
     const statusFilter = searchParams.get('status');
@@ -168,6 +165,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const newTicket: SupportTicket = {
@@ -201,6 +201,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { ticketId, status, resolutionNotes, refundAmount, compensationAmount, actionType } = body;

@@ -80,9 +80,25 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Only schedule preferences are editable here. Status changes use the
+    // dedicated pause/resume/cancel routes; price, dates and payment never change.
+    const updates: Record<string, unknown> = {};
+    if (typeof body?.delivery_time === 'string' && body.delivery_time) {
+      updates.delivery_time = body.delivery_time.slice(0, 16);
+    }
+    if (typeof body?.auto_renew === 'boolean') {
+      updates.auto_renew = body.auto_renew;
+    }
+    if (body?.address && typeof body.address === 'object' && !Array.isArray(body.address)) {
+      updates.address = body.address;
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No editable fields provided' }, { status: 400 });
+    }
+
     const { data: subscription, error } = await supabase
       .from('subscriptions')
-      .update(body)
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

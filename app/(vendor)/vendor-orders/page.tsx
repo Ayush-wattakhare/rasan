@@ -48,6 +48,8 @@ export default async function OperationalManifestPage() {
       .from('orders')
       .select('*')
       .eq('vendor_id', vendorId)
+      // Online orders reach the kitchen only once paid; abandoned checkouts stay hidden.
+      .or('payment_method.eq.cash,payment_status.in.(paid,refunded)')
       .order('created_at', { ascending: false });
   } else {
     query = serviceClient

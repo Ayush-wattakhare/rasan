@@ -40,9 +40,7 @@ export default function ReviewForm({ mealId, userId, orderId, onSuccess }: Revie
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          meal_id: mealId,
-          user_id: userId,
-          order_id: orderId,
+          orderId,
           rating,
           comment: comment.trim() || null,
         }),

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -172,7 +172,9 @@ export async function POST(
     });
 
     // Update subscription with extended end date and updated deliveries array
-    const { data: updatedSubscription, error: updateError } = await supabase
+    // end_date is not user-writable (migration 003); ownership was checked above.
+    const serviceClient = createServiceClient();
+    const { data: updatedSubscription, error: updateError } = await serviceClient
       .from('subscriptions')
       .update({
         deliveries,
@@ -180,16 +182,17 @@ export async function POST(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('customer_id', user.id)
       .select('*, vendors(id, business_name)')
       .single();
 
     if (updateError) {
       console.error('Error updating subscription deliveries:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to update subscription' }, { status: 500 });
     }
 
     // Send notifications to customer
-    await supabase.from('notifications').insert({
+    await serviceClient.from('notifications').insert({
       user_id: user.id,
       type: 'system',
       title: 'Off-Day Registered (+1 Day Extended)',
@@ -199,7 +202,7 @@ export async function POST(
 
     // Send notification to vendor if vendor has user_id
     if (subscription.vendors?.user_id) {
-      await supabase.from('notifications').insert({
+      await serviceClient.from('notifications').insert({
         user_id: subscription.vendors.user_id,
         type: 'order',
         title: 'Customer Off-Day Notice',

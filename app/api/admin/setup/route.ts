@@ -1,26 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { setupSecretGuard } from '@/lib/dev-tools';
 
 export async function POST(request: NextRequest) {
-  // Disallow execution in production
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json(
-      { error: 'Admin setup is disabled in production' },
-      { status: 403 }
-    );
-  }
-
-  // Optional secret verification in development/staging
-  const setupSecret = process.env.ADMIN_SETUP_SECRET;
-  if (setupSecret) {
-    const providedSecret = request.headers.get('x-admin-secret');
-    if (providedSecret !== setupSecret) {
-      return NextResponse.json(
-        { error: 'Invalid or missing admin setup secret' },
-        { status: 401 }
-      );
-    }
-  }
+  const blocked = setupSecretGuard(request);
+  if (blocked) return blocked;
 
   try {
     const body = await request.json();

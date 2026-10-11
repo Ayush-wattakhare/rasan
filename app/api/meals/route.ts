@@ -9,12 +9,29 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = createServiceClient();
 
     if (vendorId) {
-      // Get meals for specific vendor
-      const { data: meals, error } = await serviceSupabase
+      // Owners see their whole menu; everyone else only available meals.
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: ownVendor } = user
+        ? await serviceSupabase
+            .from('vendors')
+            .select('id')
+            .eq('id', vendorId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+        : { data: null };
+
+      let mealsQuery = serviceSupabase
         .from('meals')
         .select('*')
         .eq('vendor_id', vendorId)
         .order('created_at', { ascending: false });
+      if (!ownVendor) {
+        mealsQuery = mealsQuery.eq('is_available', true);
+      }
+      const { data: meals, error } = await mealsQuery;
 
       if (error) {
         return NextResponse.json(
@@ -81,7 +98,6 @@ export async function POST(request: NextRequest) {
       is_available,
       ingredients,
       allergens,
-      rating,
       image_url,
       stock,
     } = body;
@@ -92,6 +108,10 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       );
+    }
+
+    if (!(Number(price) > 0) || !(Number(preparation_time) > 0)) {
+      return NextResponse.json({ error: 'Price and preparation time must be positive' }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -137,7 +157,8 @@ export async function POST(request: NextRequest) {
         is_available: is_available !== false,
         ingredients: ingredients || [],
         allergens: allergens || [],
-        rating: rating || 4.0,
+        // Ratings come from customer reviews only.
+        rating: 0,
         image_url: image_url || null,
         stock: stock != null ? parseInt(stock) : null,
       })
@@ -147,7 +168,7 @@ export async function POST(request: NextRequest) {
     if (mealError) {
       console.error('Error creating meal:', mealError);
       return NextResponse.json(
-        { error: `Failed to create meal: ${mealError.message}` },
+        { error: 'Failed to create meal' },
         { status: 500 }
       );
     }

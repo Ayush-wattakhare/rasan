@@ -75,7 +75,7 @@ export default function DeliveryDashboardMain({
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [selectedPreviewOrder, setSelectedPreviewOrder] = useState<any | null>(null);
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
-  const [totalYield, setTotalYield] = useState<number>(deliveryPartner.earnings?.total || 1450);
+  const [totalYield, setTotalYield] = useState<number>(Number(deliveryPartner.earnings?.total ?? 0));
   const [otpModalOrder, setOtpModalOrder] = useState<any | null>(null);
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
@@ -195,11 +195,12 @@ export default function DeliveryDashboardMain({
         body: JSON.stringify({ orderId, status }),
       });
       if (response.ok) {
-        if (status === 'delivered') {
-          setTodayEarnings((prev) => prev + 45);
-        }
         await fetchLiveOrders();
         router.refresh();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || 'Could not update this order.');
+        await fetchLiveOrders();
       }
     } catch (error) {
       console.error('Update status failure:', error);
@@ -259,6 +260,11 @@ export default function DeliveryDashboardMain({
       if (resp.ok) {
         await fetchLiveOrders();
         router.refresh();
+      } else {
+        // Undo the optimistic move (e.g. another rider took it, or awaiting payment).
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || 'Could not accept this order.');
+        await fetchLiveOrders();
       }
     } catch (e) {
       console.error('Accept failure:', e);
@@ -288,6 +294,11 @@ export default function DeliveryDashboardMain({
       if (resp.ok) {
         await fetchLiveOrders();
         router.refresh();
+      } else {
+        // Undo the optimistic move (e.g. another rider took it, or awaiting payment).
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || 'Could not accept this order.');
+        await fetchLiveOrders();
       }
     } catch (e) {
       console.error('Batch accept error:', e);

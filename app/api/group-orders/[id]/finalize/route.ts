@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -54,39 +55,46 @@ export async function POST(
       );
     }
 
-    // Aggregate all items from participants
+    // Aggregate all items from participants (quantities validated; prices from the database)
+    const MAX_QUANTITY = 50;
     const allItems: any[] = [];
-    const itemMap = new Map();
+    const itemMap = new Map<string, number>();
 
-    participants.forEach((participant: any) => {
-      participant.items.forEach((item: any) => {
-        const key = item.meal_id;
-        if (itemMap.has(key)) {
-          const existing = itemMap.get(key);
-          existing.quantity += item.quantity;
-        } else {
-          itemMap.set(key, { ...item });
+    for (const participant of participants as any[]) {
+      for (const item of participant?.items ?? []) {
+        const quantity = Number(item?.quantity);
+        if (typeof item?.meal_id !== 'string' || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
+          return NextResponse.json({ error: 'Invalid item in group order' }, { status: 400 });
         }
-      });
-    });
-
-    // Convert map to array and fetch meal details
-    for (const [mealId, item] of itemMap.entries()) {
-      const { data: meal } = await supabase
-        .from('meals')
-        .select('name, price')
-        .eq('id', mealId)
-        .single();
-
-      if (meal) {
-        allItems.push({
-          meal_id: mealId,
-          name: meal.name,
-          quantity: item.quantity,
-          price: meal.price,
-          customizations: [],
-        });
+        itemMap.set(item.meal_id, (itemMap.get(item.meal_id) ?? 0) + quantity);
       }
+    }
+
+    if (itemMap.size === 0) {
+      return NextResponse.json({ error: 'No items in group order' }, { status: 400 });
+    }
+
+    const serviceClient = createServiceClient();
+    const { data: meals } = await serviceClient
+      .from('meals')
+      .select('id, name, price, vendor_id, is_available')
+      .in('id', Array.from(itemMap.keys()));
+
+    for (const [mealId, quantity] of itemMap.entries()) {
+      const meal = meals?.find((m) => m.id === mealId);
+      if (!meal || meal.vendor_id !== groupOrder.vendor_id || !meal.is_available) {
+        return NextResponse.json(
+          { error: `Item ${meal?.name ?? mealId} is not available from this kitchen` },
+          { status: 409 }
+        );
+      }
+      allItems.push({
+        meal_id: mealId,
+        name: meal.name,
+        quantity,
+        price: Number(meal.price),
+        customizations: [],
+      });
     }
 
     // Calculate totals
@@ -105,8 +113,21 @@ export async function POST(
       .eq('id', user.id)
       .single();
 
-    // Create order
-    const { data: order, error: orderError } = await supabase
+    // Claim the group order first so it can only be finalized once.
+    const { data: claimed } = await supabase
+      .from('group_orders')
+      .update({ status: 'ordered' })
+      .eq('id', id)
+      .eq('status', 'open')
+      .select('id')
+      .maybeSingle();
+
+    if (!claimed) {
+      return NextResponse.json({ error: 'Group order is not open' }, { status: 400 });
+    }
+
+    // Create order (server-side insert; customers cannot insert orders directly)
+    const { data: order, error: orderError } = await serviceClient
       .from('orders')
       .insert({
         customer_id: user.id,
@@ -120,7 +141,7 @@ export async function POST(
         status: 'pending',
         payment_status: 'pending',
         payment_method: 'cash',
-        delivery_address: hostProfile?.address || {
+        delivery_address: (hostProfile?.address as any) || {
           street: '',
           city: '',
           state: '',
@@ -131,23 +152,19 @@ export async function POST(
       .select()
       .single();
 
-    if (orderError) {
+    if (orderError || !order || !(await createHandoverCode(order.id))) {
       console.error('Error creating order:', orderError);
+      if (order) await serviceClient.from('orders').delete().eq('id', order.id);
+      await supabase.from('group_orders').update({ status: 'open' }).eq('id', id);
       return NextResponse.json(
         { error: 'Failed to create order' },
         { status: 500 }
       );
     }
 
-    // Update group order status
-    await supabase
-      .from('group_orders')
-      .update({ status: 'ordered' })
-      .eq('id', id);
-
     // Send notifications to all participants
     for (const participant of participants) {
-      await supabase.from('notifications').insert({
+      await serviceClient.from('notifications').insert({
         user_id: participant.user_id,
         type: 'order',
         title: 'Group Order Placed',

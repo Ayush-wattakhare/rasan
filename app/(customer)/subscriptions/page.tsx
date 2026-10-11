@@ -74,16 +74,18 @@ export default async function SubscriptionsPage() {
     const serviceClient = createServiceClient();
     const { data: subOrders } = await serviceClient
       .from('orders')
-      .select('id, customer_id, vendor_id, items, delivery_address, total, created_at, status')
+      .select('id, customer_id, vendor_id, items, delivery_address, total, created_at, status, payment_method, payment_status')
       .eq('customer_id', user.id)
-      .in('status', ['pending', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'out_for_delivery', 'delivered'])
+      .in('status', ['pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'out_for_delivery', 'delivered'])
       .order('created_at', { ascending: false });
 
     for (const order of subOrders || []) {
       const subItem: any = (order.items || []).find(
         (i: any) => i.subscription_type === 'weekly' || i.subscription_type === 'monthly'
       );
-      if (subItem) {
+      // Only orders that are paid or cash-on-delivery can back a subscription.
+      const isPayable = order.payment_method === 'cash' || order.payment_status === 'paid';
+      if (subItem && isPayable) {
         const startDate = new Date();
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + (subItem.subscription_type === 'weekly' ? 7 : 30));
@@ -98,6 +100,8 @@ export default async function SubscriptionsPage() {
             delivery_time: subItem.delivery_time || '12:00 PM',
             delivery_days: subItem.delivery_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
             status: 'active',
+            order_id: order.id,
+            payment_status: order.payment_status === 'paid' ? 'paid' : 'pending',
             price: order.total,
             start_date: startDate.toISOString().split('T')[0],
             end_date: endDate.toISOString().split('T')[0],
@@ -130,12 +134,9 @@ export default async function SubscriptionsPage() {
     for (const sub of subscriptions) {
       if (sub.status === 'active' && (!sub.deliveries || sub.deliveries.length === 0)) {
         const startDate = sub.start_date || new Date().toISOString().split('T')[0];
-        let endDate = sub.end_date;
-        if (!endDate || new Date(endDate) < new Date()) {
-          const endObj = new Date();
-          endObj.setDate(endObj.getDate() + (sub.plan_type === 'weekly' ? 7 : 30));
-          endDate = endObj.toISOString().split('T')[0];
-        }
+        const endDate = sub.end_date;
+        // Never extend a plan here: an expired plan stays expired.
+        if (!endDate || new Date(endDate) < new Date()) continue;
         const deliveryDays = sub.delivery_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
         const deliveries = generateDeliverySchedule(startDate, endDate, deliveryDays);
         await serviceClient

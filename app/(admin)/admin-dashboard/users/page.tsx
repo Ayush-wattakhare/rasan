@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import UserManagement from './user-management';
 
 export default async function AdminUsersPage() {
@@ -29,8 +29,8 @@ export default async function AdminUsersPage() {
     .select('*')
     .order('created_at', { ascending: false });
 
-  // Fetch vendors
-  const { data: vendors } = await supabase
+  // Fetch vendors (service role: includes server-only columns; caller verified as admin above)
+  const { data: vendors } = await createServiceClient()
     .from('vendors')
     .select(`
       *,

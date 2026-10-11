@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { setupSecretGuard } from '@/lib/dev-tools';
 
 const DEMO_USERS = [
   {
@@ -30,21 +31,10 @@ const DEMO_USERS = [
   },
 ];
 
-export async function GET() {
-  return handleCreateDemoUsers();
-}
-
-export async function POST() {
-  return handleCreateDemoUsers();
-}
-
-async function handleCreateDemoUsers() {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json(
-      { error: 'Demo user provisioning is disabled in production' },
-      { status: 403 }
-    );
-  }
+// Local/dev bootstrap only: requires ENABLE_DEV_TOOLS and ADMIN_SETUP_SECRET.
+export async function POST(request: Request) {
+  const blocked = setupSecretGuard(request);
+  if (blocked) return blocked;
 
   try {
     const supabase = createServiceClient();

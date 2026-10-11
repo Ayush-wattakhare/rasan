@@ -1,48 +1,27 @@
 /**
- * Delivery Handover OTP Utility
- * Provides secure generation and verification of 4-digit delivery PINs
+ * Delivery handover OTP (client-safe part).
+ * Codes are stored in `order_handover_codes`, readable only by the ordering
+ * customer. Customer queries embed it as `handover:order_handover_codes(code)`.
+ * There is no derived fallback PIN.
  */
+export const HANDOVER_EMBED = 'handover:order_handover_codes(code)';
 
-export function getDeliveryOtp(order: {
-  id?: string;
-  order_number?: string;
-  delivery_address?: any;
-}): string {
-  if (!order) return '1234';
-
-  // 1. If order has an explicit OTP saved in delivery_address
-  if (
-    order.delivery_address &&
-    typeof order.delivery_address === 'object' &&
-    order.delivery_address.delivery_otp
-  ) {
-    return String(order.delivery_address.delivery_otp).trim();
-  }
-
-  // 2. Deterministic 4-digit PIN based on order_number or ID for existing orders
-  const digits = (order.order_number || order.id || '2468').replace(/\D/g, '');
-  if (digits.length >= 4) {
-    return digits.slice(-4);
-  }
-
-  // 3. Fallback deterministic hash
-  let hash = 0;
-  const str = order.id || order.order_number || 'rasan';
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) % 9000;
-  }
-  return String(1000 + Math.abs(hash));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getDeliveryOtp(order: any): string | null {
+  const handover = Array.isArray(order?.handover) ? order?.handover[0] : order?.handover;
+  return handover?.code ? String(handover.code) : null;
 }
 
-export function generateDeliveryOtp(): string {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
-
-export function verifyDeliveryOtp(
-  order: { id?: string; order_number?: string; delivery_address?: any },
-  enteredOtp: string
-): boolean {
-  if (!enteredOtp) return false;
-  const expectedOtp = getDeliveryOtp(order);
-  return enteredOtp.trim() === expectedOtp.trim();
+/**
+ * Returns the order without any handover code data. Use before sending orders
+ * to anyone other than the customer (riders, kitchens).
+ */
+export function withoutDeliveryOtp<T extends { delivery_address?: any; handover?: any }>(order: T): T {
+  const { handover: _handover, ...rest } = order as any;
+  const address = rest.delivery_address;
+  if (address && typeof address === 'object' && 'delivery_otp' in address) {
+    const { delivery_otp: _otp, ...cleanAddress } = address;
+    rest.delivery_address = cleanAddress;
+  }
+  return rest as T;
 }

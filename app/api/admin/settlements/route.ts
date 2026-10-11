@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { createServiceClient } from '@/lib/supabase/server';
 import { RASAN_COMMISSION_PERCENTAGE } from '@/lib/utils/constants';
 
 export interface SettlementRecord {
@@ -107,14 +108,10 @@ const MEMORY_SETTLEMENTS: SettlementRecord[] = [
 ];
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Calculate Platform Commission & Payout Aggregates
     const settledList = MEMORY_SETTLEMENTS.filter((s) => s.status === 'settled');
     const pendingList = MEMORY_SETTLEMENTS.filter((s) => s.status === 'pending');
@@ -144,14 +141,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { settlementId, customUtr, notes } = body;
 

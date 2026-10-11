@@ -21,6 +21,14 @@ async function ensureBucketExists(serviceClient: ReturnType<typeof createService
   }
 }
 
+const ALLOWED_FOLDERS = ['meals', 'vendors', 'avatars', 'reviews'];
+const EXTENSION_BY_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -32,7 +40,11 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const folder = (formData.get('folder') as string) || 'meals';
+    // Fixed set of folders; anything else (including "../") falls back to meals.
+    const requestedFolder = formData.get('folder');
+    const folder = typeof requestedFolder === 'string' && ALLOWED_FOLDERS.includes(requestedFolder)
+      ? requestedFolder
+      : 'meals';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -60,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Auto-create the bucket on first use — no manual Supabase dashboard step needed
     await ensureBucketExists(serviceClient);
 
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const ext = EXTENSION_BY_TYPE[file.type];
     const fileName = `${folder}/${user.id}_${Date.now()}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
@@ -76,7 +88,7 @@ export async function POST(request: NextRequest) {
     if (uploadError) {
       console.error('Upload error:', uploadError);
       return NextResponse.json(
-        { error: `Upload failed: ${uploadError.message}` },
+        { error: 'Upload failed' },
         { status: 500 }
       );
     }

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { 
@@ -27,28 +30,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if request is from admin
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
+    // Role-specific required fields, checked before any account is created
+    if (role === 'vendor' && !businessName) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: 'Business name is required for vendors' },
+        { status: 400 }
       );
     }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || profile.role !== 'admin') {
+    if (role === 'delivery' && (!vehicleType || !vehicleNumber || !licenseNumber)) {
       return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
+        { error: 'Vehicle type, vehicle number, and license number are required for delivery partners' },
+        { status: 400 }
       );
     }
 
@@ -82,6 +74,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // If a later step fails, remove the half-created account so the email can be reused.
+    const newUserId = authData.user.id;
+    const rollback = async () => {
+      const { error } = await serviceSupabase.auth.admin.deleteUser(newUserId);
+      if (error) console.error('Rollback of auth user failed:', error);
+    };
+
     // Create profile
     const { error: profileError } = await serviceSupabase
       .from('profiles')
@@ -97,6 +96,7 @@ export async function POST(request: NextRequest) {
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
+      await rollback();
       return NextResponse.json(
         { error: `Failed to create profile: ${profileError.message}` },
         { status: 500 }
@@ -105,13 +105,6 @@ export async function POST(request: NextRequest) {
 
     // Create vendor or delivery partner specific record
     if (role === 'vendor') {
-      if (!businessName) {
-        return NextResponse.json(
-          { error: 'Business name is required for vendors' },
-          { status: 400 }
-        );
-      }
-
       const vendorBankDetails = body.bank_details || {
         account_number: bankAccount || null,
         ifsc_code: ifsc || null,
@@ -131,8 +124,11 @@ export async function POST(request: NextRequest) {
         address: address || 'Address to be updated',
         phone: phone || email,
         email,
-        fssai_license: fssai || null,
-        gst_number: gst || null,
+        // FSSAI / GST are stored in the documents JSON (there are no such columns).
+        documents: {
+          fssai_license: fssai || null,
+          gst_number: gst || null,
+        },
         bank_details: vendorBankDetails,
         operating_hours: {
           monday: { open_time: '09:00', close_time: '21:00', is_open: true },
@@ -143,7 +139,7 @@ export async function POST(request: NextRequest) {
           saturday: { open_time: '09:00', close_time: '21:00', is_open: true },
           sunday: { open_time: '09:00', close_time: '21:00', is_open: true },
         },
-        rating: 4.5,
+        rating: 0,
         total_orders: 0,
         is_active: true,
       };
@@ -160,19 +156,13 @@ export async function POST(request: NextRequest) {
 
       if (vendorError) {
         console.error('Vendor creation error:', vendorError);
+        await rollback();
         return NextResponse.json(
           { error: `Failed to create vendor: ${vendorError.message}` },
           { status: 500 }
         );
       }
     } else if (role === 'delivery') {
-      if (!vehicleType || !vehicleNumber || !licenseNumber) {
-        return NextResponse.json(
-          { error: 'Vehicle type, vehicle number, and license number are required for delivery partners' },
-          { status: 400 }
-        );
-      }
-
       const deliveryBankDetails = body.bank_details || {
         account_number: bankAccountNumber || null,
         ifsc_code: ifscCode || null,
@@ -190,11 +180,15 @@ export async function POST(request: NextRequest) {
           vehicle_number: vehicleNumber,
           license_number: licenseNumber,
           is_online: false,
-          rating: 4.0,
+          rating: 0,
           total_deliveries: 0,
-          blood_group: bloodGroup || null,
-          emergency_contact: emergencyContact || null,
-          aadhar_number: aadharNumber || null,
+          // Personal details are stored in the documents JSON (there are no such columns).
+          documents: {
+            age: age || null,
+            blood_group: bloodGroup || null,
+            emergency_contact: emergencyContact || null,
+            aadhar_number: aadharNumber || null,
+          } as any,
           bank_details: deliveryBankDetails,
           earnings: {
             today: 0,
@@ -207,6 +201,7 @@ export async function POST(request: NextRequest) {
 
       if (deliveryError) {
         console.error('Delivery partner creation error:', deliveryError);
+        await rollback();
         return NextResponse.json(
           { error: `Failed to create delivery partner: ${deliveryError.message}` },
           { status: 500 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import ReviewCard from './review-card';
 
 interface Review {
@@ -29,25 +28,16 @@ export default function ReviewList({ mealId }: ReviewListProps) {
 
   useEffect(() => {
     const fetchReviews = async () => {
-      const supabase = createClient();
-
-      const { data } = await supabase
-        .from('reviews')
-        .select(`
-          *,
-          user:profiles(name, avatar_url)
-        `)
-        .eq('meal_id', mealId)
-        .order('created_at', { ascending: false });
-
-      if (data) {
-        setReviews(data);
-        if (data.length > 0) {
-          const avg = data.reduce((sum, review) => sum + review.rating, 0) / data.length;
-          setAverageRating(avg);
+      try {
+        const res = await fetch(`/api/meals/${mealId}/reviews`);
+        if (res.ok) {
+          const data = await res.json();
+          setReviews(data.reviews || []);
+          setAverageRating(data.averageRating || 0);
         }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchReviews();

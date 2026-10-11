@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { resolveApplicantAccount } from '@/lib/auth/applicant-account';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,60 +24,24 @@ export async function POST(request: NextRequest) {
       fullName,
     } = body;
 
-    let targetUserId = authUser?.id;
-
-    // If user is not logged in, create account using provided email & password
-    if (!targetUserId) {
-      const applicantEmail = email?.trim();
-      const applicantPassword = password?.trim();
-
-      if (!applicantEmail || !applicantPassword) {
-        return NextResponse.json(
-          { error: 'Please log in or enter an email and password to create your chef account.' },
-          { status: 401 }
-        );
-      }
-
-      const { data: newUser, error: createError } = await serviceSupabase.auth.admin.createUser({
-        email: applicantEmail,
-        password: applicantPassword,
-        email_confirm: true,
-        user_metadata: {
-          name: fullName || businessName || 'Home Chef',
-          role: 'vendor',
-        },
-      });
-
-      if (createError) {
-        if (createError.message.toLowerCase().includes('already') || createError.message.toLowerCase().includes('exists')) {
-          return NextResponse.json(
-            { error: 'An account with this email already exists. Please log in first.' },
-            { status: 400 }
-          );
-        }
-        throw createError;
-      }
-
-      targetUserId = newUser.user.id;
-
-      // Upsert profile
-      await serviceSupabase.from('profiles').upsert({
-        id: targetUserId,
-        email: applicantEmail,
-        name: fullName || businessName || 'Home Chef',
-        phone: phone || '',
-        role: 'vendor',
-        is_verified: false,
-        is_active: true,
-      });
-    }
-
     if (!businessName || !address) {
       return NextResponse.json(
         { error: 'Business name and address are required' },
         { status: 400 }
       );
     }
+
+    const applicant = await resolveApplicantAccount({
+      authUser,
+      email,
+      password,
+      name: fullName || businessName || 'Home Chef',
+      phone: phone,
+      role: 'vendor',
+    });
+    if (!applicant.ok) return applicant.response;
+    const targetUserId = applicant.userId;
+
 
     // Check if vendor record already exists for user
     const { data: existingVendor } = await serviceSupabase
@@ -116,7 +81,7 @@ export async function POST(request: NextRequest) {
         location: 'POINT(73.8567 18.5204)' as any,
         address,
         phone: phone || '',
-        email: email || authUser?.email || '',
+        email: applicant.email,
         operating_hours: defaultOperatingHours,
         bank_details: {
           account_number: bankAccount || '',
@@ -127,9 +92,10 @@ export async function POST(request: NextRequest) {
           fssai_license: fssai || '',
           gst_number: gst || '',
         } as any,
-        rating: 5.0,
+        rating: 0,
         total_orders: 0,
-        is_active: true,
+        // Listed only after admin approval (admin/partners/verify).
+        is_active: false,
       })
       .select()
       .single();

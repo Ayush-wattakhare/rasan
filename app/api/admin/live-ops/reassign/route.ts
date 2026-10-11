@@ -33,21 +33,34 @@ export async function POST(request: NextRequest) {
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
+    if (!rider || !rider.is_verified) {
+      return NextResponse.json({ error: 'Target rider not found or not verified' }, { status: 400 });
+    }
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      return NextResponse.json({ error: `Order is already ${order.status}` }, { status: 409 });
+    }
 
     const previousRiderId = order.delivery_partner_id;
 
     // 2. Update order with new delivery partner
-    const { error: updateError } = await serviceClient
+    // Reassigning never changes the order's status (or skips payment); it only swaps the rider.
+    const { data: reassigned, error: updateError } = await serviceClient
       .from('orders')
       .update({
         delivery_partner_id: targetRiderId,
-        status: order.status === 'pending' || order.status === 'confirmed' ? 'confirmed' : order.status,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', order.status)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      console.error('Live-ops reassign error:', updateError);
+      return NextResponse.json({ error: 'Failed to reassign order' }, { status: 500 });
+    }
+    if (!reassigned) {
+      return NextResponse.json({ error: 'Order status changed. Please refresh.' }, { status: 409 });
     }
 
     // 3. Send notifications
@@ -69,7 +82,7 @@ export async function POST(request: NextRequest) {
           user_id: order.customer_id,
           type: 'order',
           title: '🛵 Delivery Partner Updated',
-          message: `Your order #${order.id.slice(0, 8)} is now assigned to pilot ${rider?.profile?.name || 'Rohan'}.`,
+          message: `Your order #${order.id.slice(0, 8)} is now assigned to pilot ${rider?.profile?.name || 'a new rider'}.`,
           is_read: false,
         });
       }

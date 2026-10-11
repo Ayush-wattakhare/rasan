@@ -28,7 +28,8 @@ interface EarningsClientProps {
 export function EarningsClient({ stats, allDeliveries, partner }: EarningsClientProps) {
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const [currentBalance, setCurrentBalance] = useState<number>(
-    stats[3]?.amount ?? (partner.earnings?.total ?? 0)
+    // Same balance request_payout() checks (reduced by every payout request).
+    Number(partner.earnings?.total ?? 0)
   );
 
   const bankDetails = partner.bank_details;
