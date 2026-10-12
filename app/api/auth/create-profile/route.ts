@@ -121,8 +121,6 @@ export async function POST(request: NextRequest) {
         role: safeRole,
         is_active: true,
         is_verified: isVerified,
-        // phone_verified: set to true when the user completed OTP flow
-        ...(phoneVerified ? { phone_verified: true } : {}),
       })
       .select()
       .single();

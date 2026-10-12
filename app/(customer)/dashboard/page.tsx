@@ -24,49 +24,66 @@ export default async function CustomerDashboard() {
     .from('profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
-
-  // Fetch customer's active subscription if any
-  const { data: customerSub } = await supabase
-    .from('subscriptions')
-    .select(`
-      *,
-      vendors:vendor_id (
-        id,
-        business_name,
-        cuisine,
-        rating
-      )
-    `)
-    .eq('customer_id', user.id)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(1)
     .maybeSingle();
 
+  // Fetch customer's active subscription if any
+  let customerSub = null;
+  try {
+    const { data: subData } = await supabase
+      .from('subscriptions')
+      .select(`
+        *,
+        vendors:vendor_id (
+          id,
+          business_name,
+          cuisine,
+          rating
+        )
+      `)
+      .eq('customer_id', user.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    customerSub = subData;
+  } catch (err) {
+    console.error('Error loading subscription for dashboard:', err);
+  }
+
   // Fetch top rated meals from verified proper vendors only
-  const { data: topMeals } = await supabase
-    .from('meals')
-    .select(`
-      *,
-      vendors!inner (
-        id,
-        business_name,
-        rating,
-        is_active
-      )
-    `)
-    .eq('is_available', true)
-    .eq('vendors.is_active', true)
-    .not('vendors.business_name', 'ilike', '%test%')
-    .order('rating', { ascending: false })
-    .limit(8);
+  let topMeals: any[] = [];
+  try {
+    const { data: mealsData } = await supabase
+      .from('meals')
+      .select(`
+        *,
+        vendors!inner (
+          id,
+          business_name,
+          rating,
+          is_active
+        )
+      `)
+      .eq('is_available', true)
+      .eq('vendors.is_active', true)
+      .not('vendors.business_name', 'ilike', '%test%')
+      .order('rating', { ascending: false })
+      .limit(8);
+    topMeals = mealsData || [];
+  } catch (err) {
+    console.error('Error loading top meals for dashboard:', err);
+  }
 
   // Only active subscribers of a weekly/monthly tiffin plan get access to Kitchen Circle & Tomorrow's Menu
   const hasActiveSubscription = !!customerSub && customerSub.status === 'active';
   const activeVendorId = hasActiveSubscription ? (customerSub?.vendors?.id || customerSub?.vendor_id) : null;
   const activeVendorName = customerSub?.vendors?.business_name || 'Your Chef';
-  const customerName = profile?.name?.split(' ')[0] || profile?.email?.split('@')[0] || 'Foodie';
+  const customerName =
+    profile?.name?.split(' ')[0] ||
+    user.user_metadata?.full_name?.split(' ')[0] ||
+    user.user_metadata?.name?.split(' ')[0] ||
+    user.email?.split('@')[0] ||
+    'Foodie';
 
   return (
     <div className="min-h-screen bg-[#FDFCFB]">

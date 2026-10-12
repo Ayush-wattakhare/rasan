@@ -34,15 +34,27 @@ export async function GET(request: Request) {
           user.email?.split('@')[0] ||
           'Customer';
 
-        await serviceClient.from('profiles').insert({
-          id: user.id,
-          email: user.email || '',
-          name: fullName,
-          role: 'customer',
-          is_active: true,
-          is_verified: true,
-          phone_verified: false,
-        });
+        const avatarUrl =
+          user.user_metadata?.avatar_url ||
+          user.user_metadata?.picture ||
+          null;
+
+        const { error: insertErr } = await serviceClient.from('profiles').upsert(
+          {
+            id: user.id,
+            email: user.email || '',
+            name: fullName,
+            role: 'customer',
+            is_active: true,
+            is_verified: true,
+            avatar_url: avatarUrl,
+          },
+          { onConflict: 'id' }
+        );
+
+        if (insertErr) {
+          console.error('Failed to create customer profile in OAuth callback:', insertErr);
+        }
 
         userRole = 'customer';
       }

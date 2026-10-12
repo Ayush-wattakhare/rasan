@@ -4,6 +4,35 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-13] - Fix Customer Dashboard Blank View & Profile Settings Access for Google OAuth Users
+- **Date & Time:** 2026-10-13 02:15 IST
+- **Objective:** Fix the issue where logging in via Google OAuth caused the Customer Dashboard middle section to render blank and prevented navigation to Profile Settings (`/profile`).
+- **Root Cause:**
+  1. `app/api/auth/callback/route.ts` attempted to insert `phone_verified: false` into `profiles` during OAuth signup. Because `phone_verified` does not exist in the remote Supabase `profiles` table schema, PostgREST returned error `PGRST204`, silently preventing profile creation.
+  2. Because the user had no row in `profiles`, `app/(customer)/layout.tsx` and `app/(customer)/profile/page.tsx` called `redirect('/login')` whenever the user loaded `/dashboard` or `/profile`, aborting customer page rendering while the root layout header remained visible.
+- **Implementation Plan:**
+  1. Fix `app/api/auth/callback/route.ts`: remove reference to non-existent `phone_verified` column, use `.upsert({ onConflict: 'id' })`, and save `avatar_url` from Google metadata.
+  2. Remove non-existent `phone_verified` insertion from `app/api/auth/create-profile/route.ts`.
+  3. Add self-healing logic to `app/(customer)/layout.tsx`: automatically create the customer profile row if an authenticated user lands on the customer route without one, and redirect non-customer roles (`vendor`, `delivery`, `admin`) to their respective dashboards.
+  4. Harden `app/(customer)/dashboard/page.tsx`: use `.maybeSingle()` and wrap data queries (`customerSub`, `topMeals`) in fallback blocks so query hiccups never cause a blank screen.
+  5. Harden `app/(customer)/profile/page.tsx`: use `.maybeSingle()` with self-healing profile generation.
+  6. Backfill missing profile records in the Supabase database for existing OAuth users (`ayushgit10@gmail.com` and `ayushx189@gmail.com`).
+- **Files Modified / Created:**
+  - `app/api/auth/callback/route.ts` - Fixed profile upsert for OAuth users without invalid columns.
+  - `app/api/auth/create-profile/route.ts` - Removed reference to non-existent `phone_verified` column.
+  - `app/(customer)/layout.tsx` - Added profile self-healing and role-based routing.
+  - `app/(customer)/dashboard/page.tsx` - Replaced `.single()` with `.maybeSingle()`, added query fallbacks and safe name extraction.
+  - `app/(customer)/profile/page.tsx` - Replaced `.single()` with `.maybeSingle()` and self-healing profile fallback.
+  - `docs/CHANGES_LOG.md` - Added documentation entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - Database verification: Upserted profile records directly for `ayushgit10@gmail.com` and `ayushx189@gmail.com`.
+  - Typecheck: `npx tsc --noEmit` passed with 0 errors.
+  - Test suites: `npm test` passed 10/10 test suites (117/117 unit tests).
+  - Production build: `npm run build` passed with exit code 0 (all 96 static/dynamic routes compiled).
+
+---
+
 ### [2026-10-13] - Production Authentication Hardening: Purged Mock OTPs & Secured Google + Email/Mobile Auth
 - **Date & Time:** 2026-10-13 00:37 IST
 - **Objective:** Eliminate security risks and protect the deployed production application by purging all mock/trial OTP endpoints (`123456`) and backdoor logic. Securely configure 1-tap Google (Gmail) OAuth alongside standard bcrypt-encrypted Email authentication and capture mobile numbers as verified delivery contact info without paid SMS gateway dependencies.

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import ProfileForm from '@/components/profile/profile-form';
 import AvatarUpload from '@/components/profile/avatar-upload';
 import AddressManager from '@/components/profile/address-manager';
@@ -18,11 +18,48 @@ export default async function ProfilePage() {
     redirect('/login');
   }
 
-  const { data: profile } = await supabase
+  let { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
+
+  if (!profile) {
+    try {
+      const serviceClient = createServiceClient();
+      const fullName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split('@')[0] ||
+        'Customer';
+
+      const avatarUrl =
+        user.user_metadata?.avatar_url ||
+        user.user_metadata?.picture ||
+        null;
+
+      const { data: newProfile } = await serviceClient
+        .from('profiles')
+        .upsert(
+          {
+            id: user.id,
+            email: user.email || '',
+            name: fullName,
+            role: 'customer',
+            is_active: true,
+            is_verified: true,
+            avatar_url: avatarUrl,
+          },
+          { onConflict: 'id' }
+        )
+        .select()
+        .single();
+
+      profile = newProfile;
+    } catch (err) {
+      console.error('ProfilePage self-heal error:', err);
+    }
+  }
 
   if (!profile) {
     redirect('/login');
