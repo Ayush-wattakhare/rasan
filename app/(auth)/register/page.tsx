@@ -8,7 +8,13 @@ export const metadata = {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+          <div className="w-8 h-8 border-2 border-orange-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
       <RegisterForm />
     </Suspense>
   );

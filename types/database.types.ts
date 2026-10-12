@@ -40,7 +40,7 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
-          email: string;
+          email: string | null;
           name: string;
           phone: string | null;
           role: UserRole;
@@ -48,12 +48,13 @@ export interface Database {
           address: Address | null;
           is_active: boolean;
           is_verified: boolean;
+          phone_verified: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
-          email: string;
+          email?: string | null;   // optional: phone-only users may not have email
           name: string;
           phone?: string | null;
           role?: UserRole;
@@ -61,12 +62,13 @@ export interface Database {
           address?: Address | null;
           is_active?: boolean;
           is_verified?: boolean;
+          phone_verified?: boolean;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
-          email?: string;
+          email?: string | null;
           name?: string;
           phone?: string | null;
           role?: UserRole;
@@ -74,6 +76,7 @@ export interface Database {
           address?: Address | null;
           is_active?: boolean;
           is_verified?: boolean;
+          phone_verified?: boolean;
           created_at?: string;
           updated_at?: string;
         };

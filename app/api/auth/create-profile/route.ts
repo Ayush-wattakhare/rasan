@@ -10,10 +10,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       userId,
-      email,
+      email,       // optional for phone-only signups
       name,
       phone,
       role,
+      phoneVerified = false,  // true when user verified via OTP
       businessName,
       businessDesc,
       fssai,
@@ -25,8 +26,8 @@ export async function POST(request: NextRequest) {
       licenseNumber,
     } = body;
 
-    // Validate required fields
-    if (!userId || !email || !name) {
+    // Validate required fields (email is optional for phone-first signups)
+    if (!userId || !name) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -59,28 +60,36 @@ export async function POST(request: NextRequest) {
 
     if (sessionUser) {
       targetUserId = sessionUser.id;
-      verifiedEmail = sessionUser.email || email;
+      verifiedEmail = sessionUser.email || email || null;
     } else {
       const { data: authLookup } = await supabase.auth.admin.getUserById(userId);
       const authUser = authLookup?.user;
       const createdAt = authUser?.created_at ? new Date(authUser.created_at).getTime() : 0;
 
-      // An unconfirmed account (no session possible yet) may sign up again later,
-      // keeping its original created_at, so it is accepted regardless of age.
-      const isFreshSignup =
-        !authUser?.email_confirmed_at || Date.now() - createdAt <= SIGNUP_WINDOW_MS;
+      // Phone-OTP users: authUser.email may be null — that is valid.
+      // For email-signup users: verify the email matches and the account is fresh.
+      const isPhoneOnlyUser = !authUser?.email && !!authUser?.phone;
 
-      if (
-        !authUser ||
-        !authUser.email ||
-        authUser.email.toLowerCase() !== String(email).toLowerCase() ||
-        !isFreshSignup
-      ) {
+      if (!authUser) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
+      if (!isPhoneOnlyUser) {
+        // Email-signup path: verify email matches and account is fresh
+        const isFreshSignup =
+          !authUser?.email_confirmed_at || Date.now() - createdAt <= SIGNUP_WINDOW_MS;
+
+        if (
+          !authUser.email ||
+          authUser.email.toLowerCase() !== String(email).toLowerCase() ||
+          !isFreshSignup
+        ) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+      }
+
       targetUserId = authUser.id;
-      verifiedEmail = authUser.email;
+      verifiedEmail = authUser.email || email || null;
     }
 
     // Check if profile already exists
@@ -106,12 +115,14 @@ export async function POST(request: NextRequest) {
       .from('profiles')
       .insert({
         id: targetUserId,
-        email: verifiedEmail,
+        email: verifiedEmail || null,
         name,
         phone: phone || null,
         role: safeRole,
         is_active: true,
         is_verified: isVerified,
+        // phone_verified: set to true when the user completed OTP flow
+        ...(phoneVerified ? { phone_verified: true } : {}),
       })
       .select()
       .single();
