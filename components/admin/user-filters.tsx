@@ -18,7 +18,7 @@ export default function UserFilters() {
     } else {
       params.delete(key);
     }
-    router.push(`/users?${params.toString()}`);
+    router.push(`/user-management?${params.toString()}`);
   };
 
   const handleSearch = () => {
@@ -27,7 +27,7 @@ export default function UserFilters() {
 
   const clearFilters = () => {
     setSearch('');
-    router.push('/users');
+    router.push('/user-management');
   };
 
   return (
