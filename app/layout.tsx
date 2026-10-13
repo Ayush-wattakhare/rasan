@@ -26,6 +26,7 @@ import { CartProvider } from '@/lib/contexts/cart-context';
 import { ToastProvider } from '@/components/ui/toast';
 
 import Script from 'next/script';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export default async function RootLayout({
   children,
@@ -87,6 +88,7 @@ export default async function RootLayout({
             </div>
           </ToastProvider>
         </CartProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
