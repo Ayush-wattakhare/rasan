@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const auth = await requireAdmin();
+    if (!auth.ok) return auth.response;
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: adminProfile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (adminProfile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { userId, partnerId, role, action, reason } = body;
 
     const targetUserId = userId || partnerId;

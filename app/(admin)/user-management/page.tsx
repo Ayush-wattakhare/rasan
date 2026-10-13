@@ -31,7 +31,10 @@ export default async function UserManagementPage(props: {
     query = query.eq('role', role as UserRole);
   }
   if (search) {
-    query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+    const safeSearch = search.replace(/[%(),]/g, '');
+    if (safeSearch) {
+      query = query.or(`name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%`);
+    }
   }
 
   const { data: users, count } = await query;

@@ -4,6 +4,31 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-13] - Pre-Push Bug Fixes & Production Risk Remediation
+- **Date & Time:** 2026-10-13 22:05 IST
+- **Objective:** Fix 2 confirmed bugs (Skip-day invalid extension date loop guard and Admin user search filter injection) and 3 production risks (standardize admin verification guard, guard JSON request parsing against malformed payloads, document rate limiting strategy) before pushing to main branch.
+- **Implementation Plan:**
+  1. Fix Bug 1 in `app/api/subscriptions/[id]/skip-day/route.ts`: guard `found` flag after the 14-day loop to prevent writing corrupted extension dates, and safely wrap `request.json()`.
+  2. Fix Bug 2 in `app/(admin)/user-management/page.tsx`: sanitize `search` param to prevent PostgREST `.or()` injection.
+  3. Fix Risk 3 in `app/api/admin/partners/verify/route.ts`: replace manual auth with `requireAdmin()` to respect suspended account status.
+  4. Fix Risk 4 across target API routes (`skip-day`, `partners/verify`, `users/[id]/status`, `orders`): wrap `request.json()` with `.catch(() => ({}))`.
+  5. Document Risk 5 in `lib/utils/rate-limit.ts` for future Redis scaling.
+- **Files Modified / Created:**
+  - `app/api/subscriptions/[id]/skip-day/route.ts` - Guarded `found` flag and protected JSON parsing.
+  - `app/(admin)/user-management/page.tsx` - Sanitized search string against PostgREST injection.
+  - `app/api/admin/partners/verify/route.ts` - Replaced manual auth check with `requireAdmin()` and protected JSON parsing.
+  - `app/api/admin/users/[id]/status/route.ts` - Protected JSON parsing.
+  - `app/api/orders/route.ts` - Protected JSON parsing.
+  - `lib/utils/rate-limit.ts` - Added Redis scaling architectural documentation.
+  - `docs/CHANGES_LOG.md` - Added implementation log entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npx tsc --noEmit` passed with 0 errors.
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit tests passed).
+  - Production Build: `npm run build` completed with code 0 (all 96 routes compiled and static pages generated).
+
+---
+
 ### [2026-10-13] - Fix Customer Dashboard Blank View & Profile Settings Access for Google OAuth Users
 - **Date & Time:** 2026-10-13 02:15 IST
 - **Objective:** Fix the issue where logging in via Google OAuth caused the Customer Dashboard middle section to render blank and prevented navigation to Profile Settings (`/profile`).
