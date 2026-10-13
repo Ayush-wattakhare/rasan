@@ -81,10 +81,10 @@ export default function MealDetails({ meal }: MealDetailsProps) {
             <div className="flex items-center gap-2 pt-2">
               <span className="text-gray-400 font-medium">Curated by</span>
               <Link
-                href={`/vendors/${meal.vendors.id}`}
+                href={meal.vendors?.id ? `/vendors/${meal.vendors.id}` : '/vendors'}
                 className="text-orange-600 font-extrabold hover:text-orange-500 transition-colors border-b-2 border-orange-600/20"
               >
-                {meal.vendors.business_name}
+                {meal.vendors?.business_name || 'Home Kitchen'}
               </Link>
             </div>
           </div>

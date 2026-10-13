@@ -27,9 +27,9 @@ export default async function AdminVendorManagementPage(props: {
   }
 
   if (searchParams.verified === 'true') {
-    query = query.eq('profiles.is_verified', true);
+    query = query.eq('profile.is_verified', true);
   } else if (searchParams.verified === 'false') {
-    query = query.eq('profiles.is_verified', false);
+    query = query.eq('profile.is_verified', false);
   }
 
   const { data: vendors, error } = await query;

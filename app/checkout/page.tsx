@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CheckoutForm } from '@/components/checkout/checkout-form';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { Address } from '@/types';
 
 export default async function CheckoutPage() {
@@ -18,12 +18,35 @@ export default async function CheckoutPage() {
     redirect('/login?redirect=/checkout');
   }
 
-  // Get user profile with addresses
-  const { data: profile } = await supabase
+  // Get user profile with addresses (resilient with self-healing fallback)
+  let { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
+
+  if (!profile) {
+    const serviceClient = createServiceClient();
+    const { data: newProfile } = await serviceClient
+      .from('profiles')
+      .upsert(
+        {
+          id: user.id,
+          name:
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            'Customer',
+          email: user.email || '',
+          role: 'customer',
+          is_verified: true,
+          is_active: true,
+        },
+        { onConflict: 'id' }
+      )
+      .select()
+      .maybeSingle();
+    profile = newProfile;
+  }
 
   if (!profile) {
     redirect('/login');
