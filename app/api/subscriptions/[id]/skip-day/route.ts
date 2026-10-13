@@ -16,7 +16,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { date: targetDate, reason } = body;
 
     if (!targetDate) {
@@ -158,6 +158,13 @@ export async function POST(
         found = true;
         break;
       }
+    }
+
+    if (!found) {
+      return NextResponse.json(
+        { error: 'No valid replacement delivery day found within 14 days. Please contact support.' },
+        { status: 409 }
+      );
     }
 
     const nextDateStr = nextExtendedDate.toISOString().split('T')[0];

@@ -4,6 +4,163 @@ This document maintains a dated, chronological record of all features, fixes, ar
 
 ---
 
+### [2026-10-13] - Pre-Push Bug Fixes & Production Risk Remediation
+- **Date & Time:** 2026-10-13 22:05 IST
+- **Objective:** Fix 2 confirmed bugs (Skip-day invalid extension date loop guard and Admin user search filter injection) and 3 production risks (standardize admin verification guard, guard JSON request parsing against malformed payloads, document rate limiting strategy) before pushing to main branch.
+- **Implementation Plan:**
+  1. Fix Bug 1 in `app/api/subscriptions/[id]/skip-day/route.ts`: guard `found` flag after the 14-day loop to prevent writing corrupted extension dates, and safely wrap `request.json()`.
+  2. Fix Bug 2 in `app/(admin)/user-management/page.tsx`: sanitize `search` param to prevent PostgREST `.or()` injection.
+  3. Fix Risk 3 in `app/api/admin/partners/verify/route.ts`: replace manual auth with `requireAdmin()` to respect suspended account status.
+  4. Fix Risk 4 across target API routes (`skip-day`, `partners/verify`, `users/[id]/status`, `orders`): wrap `request.json()` with `.catch(() => ({}))`.
+  5. Document Risk 5 in `lib/utils/rate-limit.ts` for future Redis scaling.
+- **Files Modified / Created:**
+  - `app/api/subscriptions/[id]/skip-day/route.ts` - Guarded `found` flag and protected JSON parsing.
+  - `app/(admin)/user-management/page.tsx` - Sanitized search string against PostgREST injection.
+  - `app/api/admin/partners/verify/route.ts` - Replaced manual auth check with `requireAdmin()` and protected JSON parsing.
+  - `app/api/admin/users/[id]/status/route.ts` - Protected JSON parsing.
+  - `app/api/orders/route.ts` - Protected JSON parsing.
+  - `lib/utils/rate-limit.ts` - Added Redis scaling architectural documentation.
+  - `docs/CHANGES_LOG.md` - Added implementation log entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npx tsc --noEmit` passed with 0 errors.
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit tests passed).
+  - Production Build: `npm run build` completed with code 0 (all 96 routes compiled and static pages generated).
+
+---
+
+### [2026-10-13] - Fix Customer Dashboard Blank View & Profile Settings Access for Google OAuth Users
+- **Date & Time:** 2026-10-13 02:15 IST
+- **Objective:** Fix the issue where logging in via Google OAuth caused the Customer Dashboard middle section to render blank and prevented navigation to Profile Settings (`/profile`).
+- **Root Cause:**
+  1. `app/api/auth/callback/route.ts` attempted to insert `phone_verified: false` into `profiles` during OAuth signup. Because `phone_verified` does not exist in the remote Supabase `profiles` table schema, PostgREST returned error `PGRST204`, silently preventing profile creation.
+  2. Because the user had no row in `profiles`, `app/(customer)/layout.tsx` and `app/(customer)/profile/page.tsx` called `redirect('/login')` whenever the user loaded `/dashboard` or `/profile`, aborting customer page rendering while the root layout header remained visible.
+- **Implementation Plan:**
+  1. Fix `app/api/auth/callback/route.ts`: remove reference to non-existent `phone_verified` column, use `.upsert({ onConflict: 'id' })`, and save `avatar_url` from Google metadata.
+  2. Remove non-existent `phone_verified` insertion from `app/api/auth/create-profile/route.ts`.
+  3. Add self-healing logic to `app/(customer)/layout.tsx`: automatically create the customer profile row if an authenticated user lands on the customer route without one, and redirect non-customer roles (`vendor`, `delivery`, `admin`) to their respective dashboards.
+  4. Harden `app/(customer)/dashboard/page.tsx`: use `.maybeSingle()` and wrap data queries (`customerSub`, `topMeals`) in fallback blocks so query hiccups never cause a blank screen.
+  5. Harden `app/(customer)/profile/page.tsx`: use `.maybeSingle()` with self-healing profile generation.
+  6. Backfill missing profile records in the Supabase database for existing OAuth users (`ayushgit10@gmail.com` and `ayushx189@gmail.com`).
+- **Files Modified / Created:**
+  - `app/api/auth/callback/route.ts` - Fixed profile upsert for OAuth users without invalid columns.
+  - `app/api/auth/create-profile/route.ts` - Removed reference to non-existent `phone_verified` column.
+  - `app/(customer)/layout.tsx` - Added profile self-healing and role-based routing.
+  - `app/(customer)/dashboard/page.tsx` - Replaced `.single()` with `.maybeSingle()`, added query fallbacks and safe name extraction.
+  - `app/(customer)/profile/page.tsx` - Replaced `.single()` with `.maybeSingle()` and self-healing profile fallback.
+  - `docs/CHANGES_LOG.md` - Added documentation entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - Database verification: Upserted profile records directly for `ayushgit10@gmail.com` and `ayushx189@gmail.com`.
+  - Typecheck: `npx tsc --noEmit` passed with 0 errors.
+  - Test suites: `npm test` passed 10/10 test suites (117/117 unit tests).
+  - Production build: `npm run build` passed with exit code 0 (all 96 static/dynamic routes compiled).
+
+---
+
+### [2026-10-13] - Production Authentication Hardening: Purged Mock OTPs & Secured Google + Email/Mobile Auth
+- **Date & Time:** 2026-10-13 00:37 IST
+- **Objective:** Eliminate security risks and protect the deployed production application by purging all mock/trial OTP endpoints (`123456`) and backdoor logic. Securely configure 1-tap Google (Gmail) OAuth alongside standard bcrypt-encrypted Email authentication and capture mobile numbers as verified delivery contact info without paid SMS gateway dependencies.
+- **Implementation Plan:**
+  1. Purge all mock authentication files: deleted `app/api/auth/phone/` and `components/auth/phone-otp-form.tsx`.
+  2. Restore strict security checks in `app/api/auth/create-profile/route.ts` to prevent any unverified account creation.
+  3. Overhaul `components/auth/register-form.tsx` for customers with 1-tap Google Sign-up, Full Name, Email Address, Mobile Number (stored in `profiles.phone` for delivery coordination with `+91` validation), and encrypted Password.
+  4. Harden `components/auth/login-form.tsx` with 1-tap Google Sign-In and standard secure Email + Password login, with role-based dashboard redirects.
+  5. Run compilation typecheck (`npx tsc --noEmit`), execute complete Jest test suite (`npm test`), and verify pages visually in the browser.
+- **Files Modified / Created / Deleted:**
+  - `app/api/auth/phone/route.ts` - Deleted (removed mock OTP endpoint).
+  - `components/auth/phone-otp-form.tsx` - Deleted (removed simulated test OTP banner & form).
+  - `components/auth/register-form.tsx` - Added Google Sign-up and clean customer mobile contact registration.
+  - `components/auth/login-form.tsx` - Hardened production login with Google and Email + Password.
+  - `app/(auth)/register/page.tsx` - Updated to render production `RegisterForm`.
+  - `app/api/auth/create-profile/route.ts` - Hardened signup verification checks.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript compilation errors.
+  - `npm test`: 10/10 test suites passed, 117/117 unit tests passed with 0 failures.
+  - Browser verification: Captured clean screenshots of `/register` and `/login` confirming zero mock banners and seamless layout.
+
+---
+
+### [2026-10-13] - Google (Gmail) OAuth & Zero-Cost Phone Auth (Twilio-Free Mode)
+- **Date & Time:** 2026-10-13 00:26 IST
+- **Objective:** Eliminate expensive Twilio SMS dependency by adding free 1-tap Google (Gmail) OAuth on registration and login, coupled with an intelligent zero-cost phone authentication server route supporting dev test mode (`123456`) and auto-provisioned sessions.
+- **Implementation Plan:**
+  1. Create reusable `GoogleSignInButton` component (`components/auth/google-sign-in-button.tsx`) with light and dark mode variants, Google brand icon, and direct Supabase OAuth integration.
+  2. Update auth callback route (`app/api/auth/callback/route.ts`) to auto-provision `customer` profiles in `public.profiles` for new Google sign-ups and route users to their role-specific dashboards.
+  3. Create dedicated zero-cost phone auth server route (`app/api/auth/phone/route.ts`) that bypasses external paid SMS gateways with simulated test OTP (`123456`), auto-confirms new users via service role client, and establishes client sessions via magic link tokens.
+  4. Overhaul `components/auth/phone-otp-form.tsx` and `components/auth/login-form.tsx` with prominent Google Sign-in buttons, test OTP banners with 1-click Auto-fill, and dual Mobile OTP / Email tabs.
+  5. Verify end-to-end in browser via subagent and validate typecheck (`npx tsc --noEmit`) and unit tests (`npm test`).
+- **Files Modified / Created:**
+  - `components/auth/google-sign-in-button.tsx` - Created Google OAuth button.
+  - `app/api/auth/callback/route.ts` - Auto-provisioned profiles for new OAuth users.
+  - `app/api/auth/phone/route.ts` - Created zero-cost phone auth handler without Twilio.
+  - `components/auth/phone-otp-form.tsx` - Added Google button and dev test OTP mode with 1-click auto-fill.
+  - `components/auth/login-form.tsx` - Added Google button and integrated Mobile OTP + Email login.
+  - `docs/CHANGES_LOG.md` - Added documentation entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript errors.
+  - `npm test`: 10/10 test suites passed (117/117 tests).
+  - Browser subagent verified live OTP send, auto-fill, and transition to account setup.
+
+---
+
+### [2026-10-12] - Mobile Number OTP Authentication & Customer Registration Redesign
+- **Date & Time:** 2026-10-12 23:25 IST
+- **Objective:** Redesign customer registration into an industry-standard, mobile-first OTP flow (Swiggy / Zomato pattern) with phone verification before password setup, while adding a dual Mobile OTP / Email tab switcher to the login experience.
+- **Implementation Plan:**
+  1. Add database migration (`supabase/migrations/004_phone_auth.sql`) introducing `phone_verified` boolean and unique partial index on `phone` for fast lookups.
+  2. Create 3-step phone OTP registration component (`components/auth/phone-otp-form.tsx`): Phone entry with validation, 6-digit OTP verification with countdown timer & resend, and account details setup (Name, optional Email, Password).
+  3. Route customer signups on `/register` to the phone-first OTP flow while retaining multi-step onboarding for vendor and delivery partner roles.
+  4. Redesign login screen (`components/auth/login-form.tsx`) with segmented tab switcher: Mobile OTP login (default) alongside Email + Password login.
+  5. Update `app/api/auth/create-profile/route.ts` and database TypeScript types (`types/database.types.ts`) to support phone-only registrations with optional email and `phone_verified` tracking.
+  6. Verify type safety (`npx tsc --noEmit`) and run full regression test suite (`npm test`).
+- **Files Modified / Created:**
+  - `supabase/migrations/004_phone_auth.sql` - Added `phone_verified` column and index on `phone`.
+  - `components/auth/phone-otp-form.tsx` - Created 3-step phone OTP customer registration form.
+  - `app/(auth)/register/page.tsx` - Routed customer registrations to `PhoneOtpForm`.
+  - `components/auth/login-form.tsx` - Added Phone OTP tab as primary login method with Email tab fallback.
+  - `app/api/auth/create-profile/route.ts` - Made email optional and added `phoneVerified` handling.
+  - `types/database.types.ts` - Updated profile types for optional email and `phone_verified`.
+  - `app/(admin)/admin-dashboard/users/user-management.tsx` - Handled nullable email in user management table.
+  - `docs/CHANGES_LOG.md` - Added documentation entry.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript compiler errors.
+  - `npm test`: 10/10 test suites passed, 117/117 unit tests passed with 0 failures.
+
+---
+
+### [2026-10-11] - Customer Delivery Address Overhaul: Flat No, Landmark, PIN Code & GPS Auto-Detection
+- **Date & Time:** 2026-10-11 23:58 IST
+- **Objective:** Overhaul the customer address management page (`components/profile/address-manager.tsx` and `app/(customer)/profile/page.tsx`). Remove confusing raw Latitude/Longitude input fields and replace them with standard Indian delivery address fields (Flat/House No, Building/Society Name, Street/Area, Landmark, PIN Code, Address Type, Contact Info) plus a 1-click GPS auto-detect button with background coordinates and floating dock padding (`pb-32`).
+- **Implementation Plan:**
+  1. Revamp `AddressManager` in `components/profile/address-manager.tsx` with structured Indian delivery address fields:
+     - House/Flat/Room No. (`house_no`)
+     - Apartment/Society/Building Name (`building_name`)
+     - Street/Colony/Area (`street`)
+     - Landmark (`landmark`)
+     - City, State, and 6-digit PIN Code (`zip_code`)
+     - Address Tag (Home, Work, Other)
+     - Receiver contact name & phone
+  2. Integrate one-click "Use Current GPS Location" button using `getAccurateLocation` to automatically fill locality, street, city, state, pincode, and coordinates in the background.
+  3. Remove manual raw latitude and longitude number inputs from customer view, keeping coordinates safely populated in the background payload for delivery radius calculations.
+  4. Format the saved address display card with clear visual hierarchy, badges, and icon indicators.
+  5. Add `pb-32` bottom padding to `app/(customer)/profile/page.tsx` so the floating bottom navigation bar never obstructs buttons or inputs.
+  6. Verify with `npx tsc --noEmit` and `npm test`.
+- **Files Modified / Created:**
+  - `components/profile/address-manager.tsx` - Completely overhauled with complete address fields and GPS auto-fill.
+  - `app/(customer)/profile/page.tsx` - Added floating nav bottom padding.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - `npx tsc --noEmit`: 0 TypeScript compiler errors.
+  - `npm test`: 10/10 test suites passed, 117/117 unit tests passed with 0 failures.
+
+---
+
 ### [2026-10-11] - Custom Delivery Time AM/PM Controls & Time-of-Day Note (Morning/Afternoon/Night)
 - **Date & Time:** 2026-10-11 23:08 IST
 - **Objective:** Enable clear AM / PM selection for custom delivery break slots in the cart, eliminating native 24-hour browser ambiguities (e.g. typing 02:00 defaulting to 02:00 AM). In addition, display contextual time-of-day indicators (Morning, Afternoon, Evening, Night) beside and below the selected time slot.

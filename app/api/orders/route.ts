@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const items = parseItems(body?.items);
     const paymentMethod = body?.payment_method as PaymentMethod;
     const deliveryAddress = body?.delivery_address;

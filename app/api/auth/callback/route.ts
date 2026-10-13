@@ -1,22 +1,83 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { safeRedirectPath } from '@/lib/utils/safe-redirect';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  // Only same-origin relative paths; `next=@evil.com` etc. fall back to "/".
-  const next = safeRedirectPath(searchParams.get('next'));
+  const rawNext = searchParams.get('next');
+  // Only same-origin relative paths; `next=@evil.com` etc. fall back to "/"
+  const next = rawNext ? safeRedirectPath(rawNext) : null;
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error) {
-      return NextResponse.redirect(new URL(next, origin));
+    if (!error && sessionData?.user) {
+      const user = sessionData.user;
+      const serviceClient = createServiceClient();
+
+      // Check if profile exists
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('id, role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      let userRole = profile?.role;
+
+      // If new user via OAuth, create default customer profile
+      if (!profile) {
+        const fullName =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email?.split('@')[0] ||
+          'Customer';
+
+        const avatarUrl =
+          user.user_metadata?.avatar_url ||
+          user.user_metadata?.picture ||
+          null;
+
+        const { error: insertErr } = await serviceClient.from('profiles').upsert(
+          {
+            id: user.id,
+            email: user.email || '',
+            name: fullName,
+            role: 'customer',
+            is_active: true,
+            is_verified: true,
+            avatar_url: avatarUrl,
+          },
+          { onConflict: 'id' }
+        );
+
+        if (insertErr) {
+          console.error('Failed to create customer profile in OAuth callback:', insertErr);
+        }
+
+        userRole = 'customer';
+      }
+
+      // Determine redirect destination
+      if (next && next !== '/') {
+        return NextResponse.redirect(new URL(next, origin));
+      }
+
+      switch (userRole) {
+        case 'vendor':
+          return NextResponse.redirect(new URL('/vendor-dashboard', origin));
+        case 'delivery':
+          return NextResponse.redirect(new URL('/delivery-dashboard', origin));
+        case 'admin':
+          return NextResponse.redirect(new URL('/admin-dashboard', origin));
+        case 'customer':
+        default:
+          return NextResponse.redirect(new URL('/dashboard', origin));
+      }
     }
   }
 
-  // Return the user to an error page with instructions
+  // Return the user to login with error parameter
   return NextResponse.redirect(`${origin}/login?error=Could not authenticate user`);
 }

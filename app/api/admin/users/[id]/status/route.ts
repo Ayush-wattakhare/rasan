@@ -9,7 +9,7 @@ async function handleUpdate(request: NextRequest, params: Promise<{ id: string }
 
   const { id } = await params;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { is_active, is_verified, role } = body;
 
   const updateData: any = {};

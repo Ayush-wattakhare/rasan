@@ -10,7 +10,7 @@ import { CreateDeliveryForm } from '@/components/admin/create-delivery-form';
 interface User {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   role: string;
   is_active: boolean;

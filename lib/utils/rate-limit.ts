@@ -10,6 +10,9 @@ interface RateLimitStore {
   };
 }
 
+// TODO: Replace with Redis-backed store (e.g. Upstash) before scaling.
+// On serverless (Vercel), this store is instance-scoped, so the window
+// is not globally enforced across concurrent cold-start instances.
 const store: RateLimitStore = {};
 
 // Clean up old entries every 5 minutes

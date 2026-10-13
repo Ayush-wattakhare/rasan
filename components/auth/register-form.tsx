@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ChefHat, Bike, User, ShieldCheck, Upload, X, CheckCircle2, ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 type UserRole = "customer" | "vendor" | "delivery";
 
@@ -145,33 +146,132 @@ export function RegisterForm() {
 
   if (role === "customer") {
     return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-4 py-12">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="inline-flex w-16 h-16 bg-orange-600 rounded-2xl items-center justify-center mb-4 shadow-2xl shadow-orange-600/30">
-              <User className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-3xl font-black text-white uppercase italic tracking-tight">Create Account</h1>
-            <p className="text-gray-500 text-sm mt-1">Join Rasan and order home-cooked meals</p>
+            <Link href="/" className="inline-flex items-center gap-3 group">
+              <div className="w-14 h-14 bg-orange-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-orange-600/30 group-hover:scale-105 transition-transform">
+                <span className="text-2xl leading-none">🍱</span>
+              </div>
+              <div className="text-left">
+                <div className="font-black text-2xl text-white tracking-tight leading-tight">Rasan</div>
+                <div className="text-[0.6rem] font-bold text-orange-500 uppercase tracking-widest">Home Made</div>
+              </div>
+            </Link>
+            <h1 className="text-2xl font-black text-white uppercase italic tracking-tight mt-4">Create Account</h1>
+            <p className="text-gray-400 text-xs mt-1 font-medium">Join Rasan and order authentic home-cooked meals</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
-            {error && <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-widest">{error}</div>}
+
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-5">
+            {/* 1-Tap Google Sign Up */}
+            <div>
+              <GoogleSignInButton label="Sign up with Google" variant="dark" />
+            </div>
+
+            {/* Divider */}
+            <div className="relative flex items-center justify-center">
+              <div className="border-t border-white/10 w-full" />
+              <span className="bg-[#141414] px-3 text-[0.65rem] font-bold uppercase tracking-widest text-gray-400 absolute">
+                or register with email
+              </span>
+            </div>
+
+            {error && (
+              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold leading-relaxed">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-4">
-              <Field label="Full Name" id="name" value={name} onChange={setName} placeholder="John Doe" />
-              <Field label="Email" id="email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-              <Field label="Phone" id="phone" type="tel" value={phone} onChange={setPhone} placeholder="+91 00000 00000" />
-              <div className="grid grid-cols-2 gap-3">
-                <PasswordField label="Password" value={password} onChange={setPassword} show={showPass} onToggle={() => setShowPass(p => !p)} />
-                <Field label="Confirm" id="confirm" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" />
+              <DarkField label="Full Name *" id="name" value={name} onChange={setName} placeholder="e.g. Priya Sharma" />
+              <DarkField label="Email Address *" id="email" type="email" value={email} onChange={setEmail} placeholder="priya@example.com" />
+              
+              <div>
+                <label htmlFor="phone" className="block text-[0.65rem] font-black uppercase tracking-widest text-gray-500 mb-2">
+                  Mobile Number * (For Delivery Contact)
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-1 h-12 px-3 bg-white/5 border border-white/10 rounded-xl text-white text-xs font-bold shrink-0">
+                    <span className="text-gray-400">IN</span> +91
+                  </div>
+                  <input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    value={phone.replace(/^\+91/, '').trim()}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setPhone(digits ? `+91${digits}` : '');
+                    }}
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    className="flex-1 h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-orange-500 transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <label htmlFor="password" className="block text-[0.65rem] font-black uppercase tracking-widest text-gray-500 mb-2">Password *</label>
+                  <input
+                    id="password"
+                    type={showPass ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min. 6 chars"
+                    className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 pr-10 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-orange-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((p) => !p)}
+                    className="absolute right-3 top-[2.4rem] text-gray-500 hover:text-white"
+                  >
+                    {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                <div>
+                  <label htmlFor="confirm" className="block text-[0.65rem] font-black uppercase tracking-widest text-gray-500 mb-2">Confirm *</label>
+                  <input
+                    id="confirm"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-orange-500 transition-all"
+                  />
+                </div>
               </div>
             </div>
-            <button onClick={handleSubmit} disabled={loading} className="mt-6 w-full h-14 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-orange-600/20 disabled:opacity-50">
-              {loading ? "Creating..." : "Create Account"}
+
+            <button
+              id="btn-create-account"
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full h-12 bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest text-xs rounded-2xl transition-all shadow-xl shadow-orange-600/20 disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              {loading ? "Creating Account..." : "Create Account"}
+              {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
-            <p className="text-center text-xs text-gray-500 mt-4">Already have an account? <Link href={searchParams.get("redirectTo") ? `/login?redirectTo=${encodeURIComponent(searchParams.get("redirectTo")!)}` : "/login"} className="text-orange-500 hover:underline font-bold">Sign in</Link></p>
+
+            <p className="text-center text-xs text-gray-400 pt-2">
+              Already have an account?{" "}
+              <Link
+                href={searchParams.get("redirectTo") ? `/login?redirectTo=${encodeURIComponent(searchParams.get("redirectTo")!)}` : "/login"}
+                className="text-orange-400 hover:underline font-bold"
+              >
+                Sign in
+              </Link>
+            </p>
           </div>
-          <div className="text-center mt-4">
-            <p className="text-xs text-gray-600">Want to partner? <Link href="/register?role=vendor" className="text-orange-500">Become a Vendor</Link> · <Link href="/register?role=delivery" className="text-indigo-400">Deliver with us</Link></p>
+
+          <div className="text-center mt-6">
+            <p className="text-xs text-gray-500">
+              Want to partner?{" "}
+              <Link href="/register?role=vendor" className="text-orange-400 font-medium hover:underline">Become a Vendor</Link> ·{" "}
+              <Link href="/register?role=delivery" className="text-indigo-400 font-medium hover:underline">Deliver with us</Link>
+            </p>
           </div>
         </div>
       </div>
