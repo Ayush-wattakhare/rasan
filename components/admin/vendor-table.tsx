@@ -189,9 +189,23 @@ export default function VendorTable({ vendors }: VendorTableProps) {
                       </span>
                     </div>
                     <Badge
-                      className={`${vendor.is_verified ? 'bg-blue-600' : 'bg-orange-600'} border-none px-2 py-0 text-[0.55rem] font-black tracking-[0.1em] text-white uppercase`}
+                      className={`${
+                        vendor.is_verified
+                          ? 'bg-blue-600'
+                          : vendor.documents?.application_status === 'declined'
+                            ? 'bg-red-600'
+                            : vendor.documents?.application_status === 'blocked'
+                              ? 'bg-red-800'
+                              : 'bg-orange-600'
+                      } border-none px-2 py-0 text-[0.55rem] font-black tracking-[0.1em] text-white uppercase`}
                     >
-                      {vendor.is_verified ? 'VERIFIED' : 'PENDING'}
+                      {vendor.is_verified
+                        ? 'VERIFIED'
+                        : vendor.documents?.application_status === 'declined'
+                          ? 'DECLINED'
+                          : vendor.documents?.application_status === 'blocked'
+                            ? 'BLOCKED'
+                            : 'PENDING'}
                     </Badge>
                   </div>
                 </TableCell>
@@ -218,6 +232,7 @@ export default function VendorTable({ vendors }: VendorTableProps) {
                       vendorId={vendor.id}
                       isVerified={vendor.is_verified}
                       isActive={vendor.is_active}
+                      applicationStatus={vendor.documents?.application_status}
                       role="vendor"
                     />
                   </div>

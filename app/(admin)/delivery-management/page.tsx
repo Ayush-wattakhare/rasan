@@ -15,21 +15,32 @@ export default async function AdminDeliveryManagementPage(props: {
     .from('delivery_partners')
     .select(
       `
-      id, user_id, vehicle_type, vehicle_number, license_number, is_online, is_verified, rating, total_deliveries, created_at,
-      profile:profiles!inner(name, email, phone, is_verified)
+      id, user_id, vehicle_type, vehicle_number, license_number, is_online, is_verified, rating, total_deliveries, documents, created_at,
+      profile:profiles!inner(name, email, phone, is_verified, is_active)
     `
     )
     .order('created_at', { ascending: false });
 
   if (searchParams.verified === 'true') {
-    query = query.eq('is_verified', true);
+    query = query.eq('profile.is_verified', true);
   } else if (searchParams.verified === 'false') {
-    query = query.eq('is_verified', false);
+    query = query.eq('profile.is_verified', false);
   }
 
   const { data: partners, error } = await query;
 
-  const transformedPartners = (partners as any)?.map((p: any) => ({
+  // Filter out declined or suspended applicants when viewing "Pending Applications"
+  const filteredPartners = ((partners as any[]) || []).filter((p: any) => {
+    if (searchParams.verified === 'false') {
+      const status =
+        p.documents && typeof p.documents === 'object' ? p.documents.application_status : null;
+      if (status === 'declined' || status === 'blocked') return false;
+      if (p.profile?.is_active === false) return false;
+    }
+    return true;
+  });
+
+  const transformedPartners = filteredPartners.map((p: any) => ({
     id: p.id,
     user_id: p.user_id,
     vehicle_type: p.vehicle_type,
@@ -39,6 +50,7 @@ export default async function AdminDeliveryManagementPage(props: {
     is_verified: p.is_verified || p.profile?.is_verified || false,
     rating: p.rating,
     total_deliveries: p.total_deliveries,
+    documents: p.documents,
     created_at: p.created_at,
     profile: p.profile,
   }));

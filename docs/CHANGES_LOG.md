@@ -2,6 +2,31 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-14] - Delivery Rider Management Overhaul: Delete Rider API & Decline Fix
+
+- **Date & Time:** 2026-10-14 23:44 IST
+- **Objective:** Fix rider decline button not updating UI in Delivery Registry, add dedicated "Delete Rider" API endpoint and confirmation action, and filter out declined/blocked riders from the Pending Applications tab.
+- **Implementation Plan:**
+  1. Create `DELETE /api/admin/delivery-partners/[id]` API route to remove delivery partners from registry and reset profile role to `customer`.
+  2. Enhance `components/admin/verification-actions.tsx`: support `partnerId` prop for delivery partners, add "Delete Rider" action with confirmation dialog, and ensure decline/block updates UI correctly.
+  3. Update `components/admin/delivery-table.tsx` to pass `partnerId={partner.id}` and `role="delivery"`.
+  4. Fix query in `app/(admin)/delivery-management/page.tsx`: select `documents` and `profile.is_active`; exclude declined or blocked riders from the "Pending Applications" tab (`?verified=false`).
+- **Files Modified / Created:**
+  - `app/api/admin/delivery-partners/[id]/route.ts` - New DELETE endpoint for delivery partners with order cascade handling, profile role demotion, and notifications.
+  - `app/api/admin/partners/verify/route.ts` - Resolved target partner by either ID or user ID, ensured profile role demotion to customer on decline, and unified notifications.
+  - `components/admin/verification-actions.tsx` - Added `partnerId` and `applicationStatus` props, Delete Rider option in dropdown, dynamic confirmation dialog, and contextual button visibility.
+  - `components/admin/delivery-table.tsx` - Passed `partnerId` and `applicationStatus` to `VerificationActions`, and added DECLINED and BLOCKED status badge styling.
+  - `components/admin/vendor-table.tsx` - Passed `applicationStatus` to `VerificationActions` and rendered DECLINED and BLOCKED badges consistently.
+  - `app/(admin)/delivery-management/page.tsx` - Selected `documents` and `profile.is_active`, and filtered out declined/blocked applicants from the "Pending Applications" tab (`?verified=false`).
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` (`tsc --noEmit`) passed with 0 errors.
+  - Test Suite: `npm test` (`jest`) passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted and verified with Prettier.
+
+---
+
 ### [2026-10-14] - Vendor Registry Overhaul: Delete Vendor API, Block Action & Pending Filter Fix
 
 - **Date & Time:** 2026-10-14 22:38 IST

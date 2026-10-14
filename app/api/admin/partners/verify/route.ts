@@ -30,6 +30,88 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 2. Resolve target partner and update application status in documents
+    let actualUserId = targetUserId;
+
+    if (role === 'vendor') {
+      const { data: vRecord } = await serviceClient
+        .from('vendors')
+        .select('id, user_id, documents')
+        .or(`id.eq.${targetUserId},user_id.eq.${targetUserId}`)
+        .maybeSingle();
+
+      if (vRecord) {
+        actualUserId = vRecord.user_id;
+        const existingDocs =
+          vRecord.documents && typeof vRecord.documents === 'object' ? vRecord.documents : {};
+        const updatedDocs = {
+          ...existingDocs,
+          application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
+          ...(isDecline
+            ? {
+                decline_reason: reason || 'Application declined by admin',
+                declined_at: new Date().toISOString(),
+              }
+            : {}),
+          ...(isBlock
+            ? {
+                block_reason: reason || 'Account permanently blocked by admin',
+                blocked_at: new Date().toISOString(),
+              }
+            : {}),
+          ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
+        };
+
+        await serviceClient
+          .from('vendors')
+          .update({
+            is_active: isAccept,
+            documents: updatedDocs,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', vRecord.id);
+      }
+    } else if (role === 'delivery') {
+      const { data: dRecord } = await serviceClient
+        .from('delivery_partners')
+        .select('id, user_id, documents')
+        .or(`id.eq.${targetUserId},user_id.eq.${targetUserId}`)
+        .maybeSingle();
+
+      if (dRecord) {
+        actualUserId = dRecord.user_id;
+        const existingDocs =
+          dRecord.documents && typeof dRecord.documents === 'object' ? dRecord.documents : {};
+        const updatedDocs = {
+          ...existingDocs,
+          application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
+          ...(isDecline
+            ? {
+                decline_reason: reason || 'Application declined by admin',
+                declined_at: new Date().toISOString(),
+              }
+            : {}),
+          ...(isBlock
+            ? {
+                block_reason: reason || 'Account permanently blocked by admin',
+                blocked_at: new Date().toISOString(),
+              }
+            : {}),
+          ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
+        };
+
+        await serviceClient
+          .from('delivery_partners')
+          .update({
+            is_verified: isAccept,
+            is_online: false,
+            documents: updatedDocs,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', dRecord.id);
+      }
+    }
+
     // 1. Update Profile verification, active state, and role
     const profileUpdate: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -43,85 +125,11 @@ export async function POST(request: NextRequest) {
       profileUpdate.is_active = false; // Completely suspend blocked account
     } else if (isDecline) {
       profileUpdate.is_verified = false;
-      // Demote role back to customer so they can still order food without lingering in vendor state
+      // Demote role back to customer so they can still order food without lingering in partner state
       profileUpdate.role = 'customer';
     }
 
-    await serviceClient.from('profiles').update(profileUpdate).eq('id', targetUserId);
-
-    // 2. Fetch existing documents to safely merge application status
-    if (role === 'vendor') {
-      const { data: vRecord } = await serviceClient
-        .from('vendors')
-        .select('documents')
-        .eq('user_id', targetUserId)
-        .maybeSingle();
-
-      const existingDocs =
-        vRecord?.documents && typeof vRecord.documents === 'object' ? vRecord.documents : {};
-      const updatedDocs = {
-        ...existingDocs,
-        application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
-        ...(isDecline
-          ? {
-              decline_reason: reason || 'Application declined by admin',
-              declined_at: new Date().toISOString(),
-            }
-          : {}),
-        ...(isBlock
-          ? {
-              block_reason: reason || 'Account permanently blocked by admin',
-              blocked_at: new Date().toISOString(),
-            }
-          : {}),
-        ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
-      };
-
-      await serviceClient
-        .from('vendors')
-        .update({
-          is_active: isAccept,
-          documents: updatedDocs,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', targetUserId);
-    } else if (role === 'delivery') {
-      const { data: dRecord } = await serviceClient
-        .from('delivery_partners')
-        .select('documents')
-        .eq('user_id', targetUserId)
-        .maybeSingle();
-
-      const existingDocs =
-        dRecord?.documents && typeof dRecord.documents === 'object' ? dRecord.documents : {};
-      const updatedDocs = {
-        ...existingDocs,
-        application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
-        ...(isDecline
-          ? {
-              decline_reason: reason || 'Application declined by admin',
-              declined_at: new Date().toISOString(),
-            }
-          : {}),
-        ...(isBlock
-          ? {
-              block_reason: reason || 'Account permanently blocked by admin',
-              blocked_at: new Date().toISOString(),
-            }
-          : {}),
-        ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
-      };
-
-      await serviceClient
-        .from('delivery_partners')
-        .update({
-          is_verified: isAccept,
-          is_online: false,
-          documents: updatedDocs,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', targetUserId);
-    }
+    await serviceClient.from('profiles').update(profileUpdate).eq('id', actualUserId);
 
     // 3. Dispatch Notification to the Partner (Client)
     try {
@@ -140,7 +148,7 @@ export async function POST(request: NextRequest) {
       }
 
       await (serviceClient.from('notifications') as any).insert({
-        user_id: targetUserId,
+        user_id: actualUserId,
         type: 'system',
         title: notificationTitle,
         message: notificationMessage,
@@ -153,7 +161,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       action,
-      userId: targetUserId,
+      userId: actualUserId,
       message: isAccept
         ? `Partner successfully approved and activated. Welcome notification sent.`
         : isBlock

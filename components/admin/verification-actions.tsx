@@ -25,16 +25,20 @@ import { ShieldAlert, Trash2, CheckCircle2, XCircle, AlertTriangle, Loader2 } fr
 interface VerificationActionsProps {
   userId: string;
   vendorId?: string;
+  partnerId?: string;
   isVerified: boolean;
   isActive: boolean;
+  applicationStatus?: string | null;
   role?: 'customer' | 'vendor' | 'delivery' | 'admin' | string;
 }
 
 export default function VerificationActions({
   userId,
   vendorId,
+  partnerId,
   isVerified,
   isActive,
+  applicationStatus,
   role = 'vendor',
 }: VerificationActionsProps) {
   const [loading, setLoading] = useState(false);
@@ -212,19 +216,32 @@ export default function VerificationActions({
     }
   };
 
-  const handleDeleteVendor = async () => {
+  const handleDelete = async () => {
     setLoading(true);
     try {
-      const targetId = vendorId || userId;
-      const response = await fetch(`/api/admin/vendors/${targetId}`, {
-        method: 'DELETE',
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to delete vendor');
-      toast({
-        title: 'Vendor Deleted 🗑️',
-        description: data.message || 'Vendor removed from registry.',
-      });
+      if (role === 'delivery' || partnerId) {
+        const targetId = partnerId || userId;
+        const response = await fetch(`/api/admin/delivery-partners/${targetId}`, {
+          method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to delete delivery partner');
+        toast({
+          title: 'Rider Deleted 🗑️',
+          description: data.message || 'Delivery rider removed from registry.',
+        });
+      } else {
+        const targetId = vendorId || userId;
+        const response = await fetch(`/api/admin/vendors/${targetId}`, {
+          method: 'DELETE',
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to delete vendor');
+        toast({
+          title: 'Vendor Deleted 🗑️',
+          description: data.message || 'Vendor removed from registry.',
+        });
+      }
       setIsDeleteDialogOpen(false);
       router.refresh();
     } catch (error: any) {
@@ -237,7 +254,7 @@ export default function VerificationActions({
   return (
     <>
       <div className="flex items-center justify-end gap-2">
-        {!isVerified && (
+        {!isVerified && applicationStatus !== 'blocked' && (
           <>
             <Button
               size="sm"
@@ -247,15 +264,17 @@ export default function VerificationActions({
             >
               Accept Request
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleDeclineRequest}
-              disabled={loading}
-              className="h-8 cursor-pointer rounded-xl bg-red-600 px-3 text-[0.6rem] font-black tracking-wider text-white uppercase shadow-md hover:bg-red-500"
-            >
-              Decline
-            </Button>
+            {applicationStatus !== 'declined' && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleDeclineRequest}
+                disabled={loading}
+                className="h-8 cursor-pointer rounded-xl bg-red-600 px-3 text-[0.6rem] font-black tracking-wider text-white uppercase shadow-md hover:bg-red-500"
+              >
+                Decline
+              </Button>
+            )}
           </>
         )}
 
@@ -285,7 +304,13 @@ export default function VerificationActions({
               onClick={toggleStatus}
               className="cursor-pointer rounded-xl px-4 py-2.5 text-[0.65rem] font-black tracking-widest uppercase transition-colors focus:bg-white/10 focus:text-amber-500"
             >
-              {isActive ? 'Deactivate Storefront' : 'Activate Storefront'}
+              {isActive
+                ? role === 'delivery'
+                  ? 'Deactivate Rider'
+                  : 'Deactivate Storefront'
+                : role === 'delivery'
+                  ? 'Activate Rider'
+                  : 'Activate Storefront'}
             </DropdownMenuItem>
 
             <DropdownMenuItem
@@ -306,11 +331,23 @@ export default function VerificationActions({
                 </DropdownMenuItem>
               </>
             )}
+
+            {(role === 'delivery' || partnerId) && (
+              <>
+                <DropdownMenuSeparator className="my-1 bg-white/10" />
+                <DropdownMenuItem
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-[0.65rem] font-black tracking-widest text-red-500 uppercase transition-colors focus:bg-red-950/80 focus:text-red-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-500" /> Delete Rider
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {/* ── DELETE VENDOR CONFIRMATION DIALOG ── */}
+      {/* ── DELETE PARTNER CONFIRMATION DIALOG ── */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="my-auto flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-[2.5rem] border-none bg-white p-0 shadow-2xl">
           <div className="relative shrink-0 bg-[#1A1A1A] px-6 py-5 text-white">
@@ -319,10 +356,12 @@ export default function VerificationActions({
                 <Trash2 className="h-3 w-3" /> Permanent Deletion
               </span>
               <DialogTitle className="text-xl leading-tight font-black tracking-tight text-white uppercase italic">
-                Delete Vendor Record
+                {role === 'delivery' ? 'Delete Rider Record' : 'Delete Vendor Record'}
               </DialogTitle>
               <DialogDescription className="text-xs font-semibold text-gray-400">
-                Permanently erase this vendor storefront from the registry.
+                {role === 'delivery'
+                  ? 'Permanently erase this delivery rider from the registry.'
+                  : 'Permanently erase this vendor storefront from the registry.'}
               </DialogDescription>
             </div>
           </div>
@@ -333,8 +372,9 @@ export default function VerificationActions({
                 <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" /> Are you sure?
               </div>
               <p className="text-[0.7rem] leading-relaxed text-red-700">
-                This will permanently delete the vendor storefront and all linked meals and
-                subscriptions. The user account will remain active as a standard customer.
+                {role === 'delivery'
+                  ? 'This will permanently delete the delivery partner record. The user account will remain active as a standard customer.'
+                  : 'This will permanently delete the vendor storefront and all linked meals and subscriptions. The user account will remain active as a standard customer.'}
               </p>
             </div>
           </div>
@@ -352,7 +392,7 @@ export default function VerificationActions({
             <Button
               type="button"
               disabled={loading}
-              onClick={handleDeleteVendor}
+              onClick={handleDelete}
               className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-red-600 text-xs font-black text-white uppercase shadow-lg shadow-red-900/20 hover:bg-red-700"
             >
               {loading ? (

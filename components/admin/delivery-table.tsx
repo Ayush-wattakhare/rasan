@@ -23,11 +23,14 @@ interface DeliveryPartner {
   is_verified: boolean;
   rating: number;
   total_deliveries: number;
+  documents?: any;
   created_at: string;
   profile?: {
     name: string;
     email: string;
     phone: string | null;
+    is_active?: boolean;
+    is_verified?: boolean;
   };
 }
 
@@ -145,9 +148,23 @@ export default function DeliveryTable({ partners }: DeliveryTableProps) {
                       </span>
                     </div>
                     <Badge
-                      className={`${partner.is_verified ? 'bg-green-600' : 'bg-orange-600'} border-none px-2 py-0 text-[0.55rem] font-black tracking-[0.1em] text-white uppercase`}
+                      className={`${
+                        partner.is_verified
+                          ? 'bg-green-600'
+                          : partner.documents?.application_status === 'declined'
+                            ? 'bg-red-600'
+                            : partner.documents?.application_status === 'blocked'
+                              ? 'bg-red-800'
+                              : 'bg-orange-600'
+                      } border-none px-2 py-0 text-[0.55rem] font-black tracking-[0.1em] text-white uppercase`}
                     >
-                      {partner.is_verified ? 'VERIFIED' : 'PENDING'}
+                      {partner.is_verified
+                        ? 'VERIFIED'
+                        : partner.documents?.application_status === 'declined'
+                          ? 'DECLINED'
+                          : partner.documents?.application_status === 'blocked'
+                            ? 'BLOCKED'
+                            : 'PENDING'}
                     </Badge>
                   </div>
                 </TableCell>
@@ -164,8 +181,10 @@ export default function DeliveryTable({ partners }: DeliveryTableProps) {
                 <TableCell className="rounded-r-[3rem] border-none px-6 py-6 text-right">
                   <VerificationActions
                     userId={partner.user_id}
+                    partnerId={partner.id}
                     isVerified={partner.is_verified}
-                    isActive={true}
+                    isActive={partner.profile?.is_active ?? true}
+                    applicationStatus={partner.documents?.application_status}
                     role="delivery"
                   />
                 </TableCell>
