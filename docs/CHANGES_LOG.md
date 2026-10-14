@@ -20,7 +20,8 @@ This document maintains a dated, chronological record of all features, fixes, ar
   - `components/admin/partner-application-listener.tsx` - Replaced intrusive modal auto-popup with a floating notification pill (`New Application Received (N)`), pagination between multiple applications, and 3 explicit actions (Accept & Activate, Decline with feedback, and Block Partner).
   - `components/admin/verification-actions.tsx` - Routed registry table accept/decline actions through the unified `/api/admin/partners/verify` endpoint.
   - `docs/CHANGES_LOG.md` - Recorded task changes and verification.
-- **Status:** Completed
+- **Status:** Completed (PR #11 created)
+- **Pull Request:** [PR #11: feat: startup launch master plan, admin persistence, and partner onboarding overhaul](https://github.com/Ayush-wattakhare/rasan/pull/11)
 - **Verification / Testing:**
   - TypeScript Compilation: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
   - Unit/Integration Tests: `npm test` passed 10/10 test suites (117/117 unit/integration tests passed in 23.6s).
