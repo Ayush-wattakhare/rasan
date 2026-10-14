@@ -17,7 +17,11 @@ interface VerificationActionsProps {
   isActive: boolean;
 }
 
-export default function VerificationActions({ userId, isVerified, isActive }: VerificationActionsProps) {
+export default function VerificationActions({
+  userId,
+  isVerified,
+  isActive,
+}: VerificationActionsProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -85,15 +89,16 @@ export default function VerificationActions({ userId, isVerified, isActive }: Ve
   const handleAcceptRequest = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/users/${userId}/status`, {
-        method: 'PUT',
+      const response = await fetch('/api/admin/partners/verify', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_verified: true, is_active: true }),
+        body: JSON.stringify({ userId, role: 'vendor', action: 'accept' }),
       });
-      if (!response.ok) throw new Error('Failed to approve application');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to approve application');
       toast({
         title: 'Application Accepted! ✅',
-        description: 'User verified and account activated.',
+        description: data.message || 'User verified and account activated.',
       });
       router.refresh();
     } catch (error: any) {
@@ -106,15 +111,21 @@ export default function VerificationActions({ userId, isVerified, isActive }: Ve
   const handleDeclineRequest = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/users/${userId}/status`, {
-        method: 'PUT',
+      const response = await fetch('/api/admin/partners/verify', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_verified: false, is_active: false }),
+        body: JSON.stringify({
+          userId,
+          role: 'vendor',
+          action: 'decline',
+          reason: 'Application declined by admin from vendor registry.',
+        }),
       });
-      if (!response.ok) throw new Error('Failed to decline application');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to decline application');
       toast({
         title: 'Application Declined ❌',
-        description: 'Account deactivated.',
+        description: data.message || 'Account unlinked and applicant notified.',
         variant: 'destructive',
       });
       router.refresh();
@@ -133,7 +144,7 @@ export default function VerificationActions({ userId, isVerified, isActive }: Ve
             size="sm"
             onClick={handleAcceptRequest}
             disabled={loading}
-            className="bg-green-600 hover:bg-green-500 text-white font-black text-[0.6rem] uppercase tracking-wider px-3 h-8 rounded-xl shadow-md"
+            className="h-8 rounded-xl bg-green-600 px-3 text-[0.6rem] font-black tracking-wider text-white uppercase shadow-md hover:bg-green-500"
           >
             Accept Request
           </Button>
@@ -142,7 +153,7 @@ export default function VerificationActions({ userId, isVerified, isActive }: Ve
             variant="destructive"
             onClick={handleDeclineRequest}
             disabled={loading}
-            className="bg-red-600 hover:bg-red-500 text-white font-black text-[0.6rem] uppercase tracking-wider px-3 h-8 rounded-xl shadow-md"
+            className="h-8 rounded-xl bg-red-600 px-3 text-[0.6rem] font-black tracking-wider text-white uppercase shadow-md hover:bg-red-500"
           >
             Decline
           </Button>
@@ -151,15 +162,29 @@ export default function VerificationActions({ userId, isVerified, isActive }: Ve
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" disabled={loading} className="text-gray-600 hover:bg-gray-100 font-black italic tracking-widest text-[0.6rem] h-8 rounded-xl">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={loading}
+            className="h-8 rounded-xl text-[0.6rem] font-black tracking-widest text-gray-600 italic hover:bg-gray-100"
+          >
             •••
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-[#1A1A1A] border border-white/15 text-white rounded-2xl shadow-2xl backdrop-blur-2xl min-w-[13rem] z-50 p-1.5 space-y-1">
-          <DropdownMenuItem onClick={toggleVerification} className="focus:bg-white/10 focus:text-orange-500 font-black uppercase tracking-widest text-[0.65rem] py-3 px-4 rounded-xl cursor-pointer transition-colors">
+        <DropdownMenuContent
+          align="end"
+          className="z-50 min-w-[13rem] space-y-1 rounded-2xl border border-white/15 bg-[#1A1A1A] p-1.5 text-white shadow-2xl backdrop-blur-2xl"
+        >
+          <DropdownMenuItem
+            onClick={toggleVerification}
+            className="cursor-pointer rounded-xl px-4 py-3 text-[0.65rem] font-black tracking-widest uppercase transition-colors focus:bg-white/10 focus:text-orange-500"
+          >
             {isVerified ? 'Revoke Verification' : 'Grant Verification'}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={toggleStatus} className="focus:bg-white/10 focus:text-red-500 font-black uppercase tracking-widest text-[0.65rem] py-3 px-4 rounded-xl cursor-pointer transition-colors">
+          <DropdownMenuItem
+            onClick={toggleStatus}
+            className="cursor-pointer rounded-xl px-4 py-3 text-[0.65rem] font-black tracking-widest uppercase transition-colors focus:bg-white/10 focus:text-red-500"
+          >
             {isActive ? 'Deactivate Account' : 'Activate Account'}
           </DropdownMenuItem>
         </DropdownMenuContent>

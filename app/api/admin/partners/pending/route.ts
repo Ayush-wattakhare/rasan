@@ -11,31 +11,51 @@ export async function GET() {
   try {
     const serviceClient = createServiceClient();
 
-    // Fetch unverified vendors and delivery partners
+    // Fetch unverified, active vendors and delivery partners who have not been declined or blocked
     const [vendorsRes, deliveryRes] = await Promise.all([
       serviceClient
         .from('vendors')
-        .select(`
-          id, user_id, business_name, address, phone, email, cuisine, created_at,
-          profile:profiles!inner(name, email, phone, is_verified)
-        `)
+        .select(
+          `
+          id, user_id, business_name, address, phone, email, cuisine, documents, created_at,
+          profile:profiles!inner(name, email, phone, is_verified, is_active, role)
+        `
+        )
         .eq('profile.is_verified', false)
+        .eq('profile.is_active', true)
+        .eq('profile.role', 'vendor')
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(20),
 
       serviceClient
         .from('delivery_partners')
-        .select(`
-          id, user_id, vehicle_type, vehicle_number, license_number, created_at,
-          profile:profiles!inner(name, email, phone, is_verified)
-        `)
+        .select(
+          `
+          id, user_id, vehicle_type, vehicle_number, license_number, documents, created_at,
+          profile:profiles!inner(name, email, phone, is_verified, is_active, role)
+        `
+        )
         .eq('profile.is_verified', false)
+        .eq('profile.is_active', true)
+        .eq('profile.role', 'delivery')
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(20),
     ]);
 
+    const activeVendors = (vendorsRes.data || []).filter((v: any) => {
+      const docs = v.documents;
+      const status = docs && typeof docs === 'object' ? docs.application_status : null;
+      return status !== 'declined' && status !== 'blocked';
+    });
+
+    const activeDelivery = (deliveryRes.data || []).filter((d: any) => {
+      const docs = d.documents;
+      const status = docs && typeof docs === 'object' ? docs.application_status : null;
+      return status !== 'declined' && status !== 'blocked';
+    });
+
     const applications = [
-      ...(vendorsRes.data || []).map((v: any) => ({
+      ...activeVendors.map((v: any) => ({
         id: v.id,
         user_id: v.user_id,
         role: 'vendor' as const,
@@ -46,7 +66,7 @@ export async function GET() {
         detail: v.address || 'Address submitted',
         created_at: v.created_at,
       })),
-      ...(deliveryRes.data || []).map((d: any) => ({
+      ...activeDelivery.map((d: any) => ({
         id: d.id,
         user_id: d.user_id,
         role: 'delivery' as const,

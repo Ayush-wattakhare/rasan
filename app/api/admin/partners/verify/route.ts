@@ -12,38 +12,112 @@ export async function POST(request: NextRequest) {
 
     const targetUserId = userId || partnerId;
     if (!targetUserId || !role || !action) {
-      return NextResponse.json({ error: 'Missing required parameters (userId, role, action)' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing required parameters (userId, role, action)' },
+        { status: 400 }
+      );
     }
 
     const serviceClient = createServiceClient();
     const isAccept = action === 'accept';
+    const isBlock = action === 'block';
+    const isDecline = action === 'decline';
 
-    // 1. Update Profile verification & active state
-    await serviceClient
-      .from('profiles')
-      .update({
-        is_verified: isAccept,
-        // Declining an application doesn't suspend the account: the person can
-        // keep using Rasan as a customer. Suspension is a separate admin action.
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', targetUserId);
+    if (!isAccept && !isBlock && !isDecline) {
+      return NextResponse.json(
+        { error: 'Invalid action. Must be accept, decline, or block' },
+        { status: 400 }
+      );
+    }
 
-    // 2. Update Vendor or Delivery Partner specific table
+    // 1. Update Profile verification, active state, and role
+    const profileUpdate: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isAccept) {
+      profileUpdate.is_verified = true;
+      profileUpdate.is_active = true;
+    } else if (isBlock) {
+      profileUpdate.is_verified = false;
+      profileUpdate.is_active = false; // Completely suspend blocked account
+    } else if (isDecline) {
+      profileUpdate.is_verified = false;
+      // Demote role back to customer so they can still order food without lingering in vendor state
+      profileUpdate.role = 'customer';
+    }
+
+    await serviceClient.from('profiles').update(profileUpdate).eq('id', targetUserId);
+
+    // 2. Fetch existing documents to safely merge application status
     if (role === 'vendor') {
+      const { data: vRecord } = await serviceClient
+        .from('vendors')
+        .select('documents')
+        .eq('user_id', targetUserId)
+        .maybeSingle();
+
+      const existingDocs =
+        vRecord?.documents && typeof vRecord.documents === 'object' ? vRecord.documents : {};
+      const updatedDocs = {
+        ...existingDocs,
+        application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
+        ...(isDecline
+          ? {
+              decline_reason: reason || 'Application declined by admin',
+              declined_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(isBlock
+          ? {
+              block_reason: reason || 'Account permanently blocked by admin',
+              blocked_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
+      };
+
       await serviceClient
         .from('vendors')
         .update({
           is_active: isAccept,
+          documents: updatedDocs,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', targetUserId);
     } else if (role === 'delivery') {
+      const { data: dRecord } = await serviceClient
+        .from('delivery_partners')
+        .select('documents')
+        .eq('user_id', targetUserId)
+        .maybeSingle();
+
+      const existingDocs =
+        dRecord?.documents && typeof dRecord.documents === 'object' ? dRecord.documents : {};
+      const updatedDocs = {
+        ...existingDocs,
+        application_status: isAccept ? 'approved' : isBlock ? 'blocked' : 'declined',
+        ...(isDecline
+          ? {
+              decline_reason: reason || 'Application declined by admin',
+              declined_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(isBlock
+          ? {
+              block_reason: reason || 'Account permanently blocked by admin',
+              blocked_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
+      };
+
       await serviceClient
         .from('delivery_partners')
         .update({
           is_verified: isAccept,
           is_online: false,
+          documents: updatedDocs,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', targetUserId);
@@ -51,13 +125,19 @@ export async function POST(request: NextRequest) {
 
     // 3. Dispatch Notification to the Partner (Client)
     try {
-      const notificationTitle = isAccept
-        ? `🎉 Application Approved: Welcome to Rasan!`
-        : `⚠️ Application Update: Action Required`;
+      let notificationTitle = '⚠️ Application Update: Action Required';
+      let notificationMessage = '';
 
-      const notificationMessage = isAccept
-        ? `Congratulations! Your ${role === 'vendor' ? 'Home Kitchen' : 'Delivery Partner'} application has been verified and activated by Rasan Admin. You can now login and start operations.`
-        : `Your ${role === 'vendor' ? 'Home Kitchen' : 'Delivery Partner'} registration could not be approved at this time.\nReason: ${reason || 'Incomplete or unverified documentation'}.\nPlease update your information or contact support.`;
+      if (isAccept) {
+        notificationTitle = `🎉 Application Approved: Welcome to Rasan!`;
+        notificationMessage = `Congratulations! Your ${role === 'vendor' ? 'Home Kitchen' : 'Delivery Partner'} application has been verified and activated by Rasan Admin. You can now login and start operations.`;
+      } else if (isBlock) {
+        notificationTitle = `🚫 Account Suspended / Partner Blocked`;
+        notificationMessage = `Your ${role === 'vendor' ? 'Home Kitchen' : 'Delivery Partner'} account has been suspended by administration.\nReason: ${reason || 'Violation of partner compliance guidelines'}.\nContact support if you believe this is in error.`;
+      } else {
+        notificationTitle = `⚠️ Application Update: Action Required`;
+        notificationMessage = `Your ${role === 'vendor' ? 'Home Kitchen' : 'Delivery Partner'} registration could not be approved at this time.\nReason: ${reason || 'Incomplete or unverified documentation'}.\nPlease update your information or contact support.`;
+      }
 
       await (serviceClient.from('notifications') as any).insert({
         user_id: targetUserId,
@@ -76,7 +156,9 @@ export async function POST(request: NextRequest) {
       userId: targetUserId,
       message: isAccept
         ? `Partner successfully approved and activated. Welcome notification sent.`
-        : `Partner application declined. Reason dispatched to client.`,
+        : isBlock
+          ? `Partner permanently blocked and account deactivated.`
+          : `Partner application declined. Reason dispatched to client.`,
     });
   } catch (err: any) {
     console.error('Partner verification error:', err);
