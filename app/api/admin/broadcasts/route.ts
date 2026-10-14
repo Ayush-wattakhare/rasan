@@ -37,10 +37,28 @@ export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
-  return NextResponse.json({
-    success: true,
-    broadcasts: MEMORY_BROADCASTS,
-  });
+  try {
+    const serviceClient = createServiceClient();
+    const { data: dbBroadcasts } = await (serviceClient.from('broadcast_announcements' as any) as any)
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const broadcasts: BroadcastMessage[] = (dbBroadcasts && dbBroadcasts.length > 0)
+      ? (dbBroadcasts as unknown as BroadcastMessage[])
+      : MEMORY_BROADCASTS;
+
+    return NextResponse.json({
+      success: true,
+      broadcasts,
+      source: (dbBroadcasts && dbBroadcasts.length > 0) ? 'database' : 'fallback',
+    });
+  } catch {
+    return NextResponse.json({
+      success: true,
+      broadcasts: MEMORY_BROADCASTS,
+      source: 'fallback',
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -48,7 +66,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { title, message, target, priority } = body;
 
     if (!title || !message) {
@@ -59,6 +77,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
 
+    const reachCount = target === 'all' ? 142 : target === 'vendor' ? 18 : 51;
     const newBroadcast: BroadcastMessage = {
       id: `b-${Date.now()}`,
       title,
@@ -66,36 +85,57 @@ export async function POST(request: NextRequest) {
       target: target || 'all',
       priority: priority || 'info',
       created_at: new Date().toISOString(),
-      reach_count: target === 'all' ? 142 : target === 'vendor' ? 18 : 51,
+      reach_count: reachCount,
     };
+
+    // Try persistent database insertion
+    const serviceClient = createServiceClient();
+    try {
+      const { data: inserted, error: insertError } = await (serviceClient.from('broadcast_announcements' as any) as any)
+        .insert({
+          title: newBroadcast.title,
+          message: newBroadcast.message,
+          target: newBroadcast.target,
+          priority: newBroadcast.priority,
+          reach_count: newBroadcast.reach_count,
+          created_by: auth.user.id,
+        })
+        .select()
+        .maybeSingle();
+
+      if (inserted && !insertError) {
+        newBroadcast.id = (inserted as any).id;
+      }
+    } catch {
+      // In-memory fallback
+    }
 
     MEMORY_BROADCASTS.unshift(newBroadcast);
 
-    // Push into system notifications table if service client is available
+    // Push into system notifications table for target users
     try {
-      const serviceClient = createServiceClient();
-      let usersQuery = serviceClient.from('profiles').select('id');
-      if (target !== 'all') {
+      let usersQuery = (serviceClient.from('profiles') as any).select('id');
+      if (target && target !== 'all') {
         usersQuery = usersQuery.eq('role', target);
       }
       const { data: targetUsers } = await usersQuery;
 
       if (targetUsers && targetUsers.length > 0) {
-        const notifications = targetUsers.map(u => ({
+        const notifications = targetUsers.slice(0, 100).map((u: any) => ({
           user_id: u.id,
           type: 'system' as const,
           title,
           message,
           is_read: false,
         }));
-        await (serviceClient.from('notifications') as any).insert(notifications.slice(0, 50));
+        await (serviceClient.from('notifications') as any).insert(notifications);
       }
     } catch {}
 
     return NextResponse.json({
       success: true,
       broadcast: newBroadcast,
-      message: `Broadcast transmitted to ${newBroadcast.reach_count} ${target.toUpperCase()} nodes.`,
+      message: `Broadcast transmitted to ${newBroadcast.reach_count} ${newBroadcast.target.toUpperCase()} nodes.`,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

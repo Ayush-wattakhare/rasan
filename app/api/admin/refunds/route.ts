@@ -6,6 +6,7 @@ export interface RefundRecord {
   id: string;
   reference_id: string;
   order_id: string;
+  order_number?: string;
   recipient_id: string;
   recipient_role: 'customer' | 'vendor' | 'delivery';
   recipient_name: string;
@@ -67,13 +68,23 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
-    const totalRefunded = MEMORY_REFUNDS.reduce((sum, r) => sum + r.amount, 0);
+    const serviceClient = createServiceClient();
+    const { data: dbRefunds } = await (serviceClient.from('refunds_ledger' as any) as any)
+      .select('*')
+      .order('processed_at', { ascending: false });
+
+    const refunds: RefundRecord[] = (dbRefunds && dbRefunds.length > 0)
+      ? (dbRefunds as unknown as RefundRecord[])
+      : MEMORY_REFUNDS;
+
+    const totalRefunded = refunds.reduce((sum, r) => sum + Number(r.amount), 0);
 
     return NextResponse.json({
       success: true,
-      refunds: MEMORY_REFUNDS,
+      refunds,
       totalRefunded,
-      totalCount: MEMORY_REFUNDS.length,
+      totalCount: refunds.length,
+      source: (dbRefunds && dbRefunds.length > 0) ? 'database' : 'fallback',
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -85,16 +96,18 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { orderId, recipientId, recipientRole, recipientName, amount, type, reason, gateway } = body;
 
-    if (!amount || amount <= 0) {
+    if (!amount || Number(amount) <= 0) {
       return NextResponse.json({ error: 'Valid amount is required' }, { status: 400 });
     }
 
+    const referenceId = `REF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newRefund: RefundRecord = {
       id: `ref-${Date.now()}`,
-      reference_id: `REF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
+      reference_id: referenceId,
       order_id: orderId || 'N/A',
       recipient_id: recipientId || 'guest',
       recipient_role: recipientRole || 'customer',
@@ -107,13 +120,40 @@ export async function POST(request: NextRequest) {
       processed_at: new Date().toISOString(),
     };
 
+    // Attempt persistent database insertion
+    const serviceClient = createServiceClient();
+    try {
+      const { data: inserted, error: insertError } = await (serviceClient.from('refunds_ledger' as any) as any)
+        .insert({
+          reference_id: referenceId,
+          order_id: orderId && orderId.length > 10 ? orderId : null,
+          order_number: orderId || null,
+          recipient_id: recipientId && recipientId.length > 10 ? recipientId : null,
+          recipient_role: newRefund.recipient_role,
+          recipient_name: newRefund.recipient_name,
+          amount: newRefund.amount,
+          type: newRefund.type,
+          reason: newRefund.reason,
+          status: 'processed',
+          gateway: newRefund.gateway,
+          processed_at: newRefund.processed_at,
+        })
+        .select()
+        .maybeSingle();
+
+      if (inserted && !insertError) {
+        newRefund.id = (inserted as any).id;
+      }
+    } catch {
+      // In-memory array fallback
+    }
+
     MEMORY_REFUNDS.unshift(newRefund);
 
     // Push notification to recipient
     try {
-      const serviceClient = createServiceClient();
       if (recipientId && recipientId.length > 10) {
-        await serviceClient.from('notifications').insert({
+        await (serviceClient.from('notifications') as any).insert({
           user_id: recipientId,
           type: 'payment',
           title: `💰 ₹${amount} Settlement Credited`,
@@ -126,7 +166,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       refund: newRefund,
-      message: `₹${amount} ${type.replace(/_/g, ' ')} processed successfully.`,
+      message: `₹${amount} ${type?.replace(/_/g, ' ') || 'refund'} processed successfully.`,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
