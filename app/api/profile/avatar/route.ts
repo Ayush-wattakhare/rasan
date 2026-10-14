@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { imageExtensionFor } from '@/lib/utils/image-upload';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,8 +34,9 @@ export async function POST(request: NextRequest) {
     const fileName = `${user.id}-${Date.now()}.${fileExt}`;
     const filePath = `avatars/${fileName}`;
 
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
+    // Upload to Supabase Storage via serviceClient
+    const serviceClient = createServiceClient();
+    const { error: uploadError } = await serviceClient.storage
       .from('profiles')
       .upload(filePath, file, {
         cacheControl: '3600',
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Get public URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from('profiles').getPublicUrl(filePath);
+    } = serviceClient.storage.from('profiles').getPublicUrl(filePath);
 
     // Update profile with new avatar URL
     const { error: updateError } = await supabase

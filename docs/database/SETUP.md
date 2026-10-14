@@ -41,6 +41,8 @@ Migration 001 also runs `CREATE EXTENSION IF NOT EXISTS` for `postgis` and `uuid
 | 2 | `supabase/migrations/002_fix_order_rls.sql` | Customer UPDATE policy on `orders` (dropped again by 003) |
 | 3 | `supabase/migrations/002_notifications_triggers.sql` | Notification triggers on order insert / status change |
 | 4 | `supabase/migrations/003_security_hardening.sql` | Column-level grants, role → `app_metadata` sync, vendor activation guard, `payouts` table, `request_payout()`, new columns |
+| 5 | `supabase/migrations/004_phone_auth.sql` | Phone authentication and profile sync trigger |
+| 6 | `supabase/migrations/005_support_refunds_broadcasts.sql` | Persistent `support_tickets`, `refunds_ledger`, `broadcast_announcements`, and `payouts` settlement enhancements |
 
 **003 is required by the current code** and has not been applied to any environment yet. Apply
 it before deploying this branch (see
