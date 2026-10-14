@@ -8,9 +8,17 @@ import { BatchPrepHub } from '@/components/vendor/batch-prep-hub';
 import { useToast } from '@/lib/hooks/use-toast';
 import { orderService } from '@/lib/services/order-service';
 import type { Order } from '@/lib/supabase/types';
-import { LayoutDashboard, UtensilsCrossed, ShieldCheck, AlertCircle, RefreshCcw, Megaphone } from 'lucide-react';
+import {
+  LayoutDashboard,
+  UtensilsCrossed,
+  ShieldCheck,
+  AlertCircle,
+  RefreshCcw,
+  Megaphone,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { AudioOrderAlert } from '@/components/vendor/audio-order-alert';
 
 export default function VendorDashboardPage() {
   const { toast } = useToast();
@@ -90,9 +98,7 @@ export default function VendorDashboardPage() {
 
   const handleUpdateStatus = async (orderId: string, status: Order['status']) => {
     // Optimistic UI update for instantaneous feedback
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
-    );
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
 
     try {
       const res = await fetch('/api/vendor/orders', {
@@ -123,10 +129,10 @@ export default function VendorDashboardPage() {
 
   if (isLoading && !vendorData) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
+      <div className="flex min-h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <RefreshCcw className="w-10 h-10 text-orange-600 animate-spin" />
-          <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] italic">
+          <RefreshCcw className="h-10 w-10 animate-spin text-orange-600" />
+          <p className="text-xs font-black tracking-[0.3em] text-gray-400 uppercase italic">
             Connecting to Kitchen Hub...
           </p>
         </div>
@@ -136,26 +142,28 @@ export default function VendorDashboardPage() {
 
   if (error && !vendorData) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-gray-100 shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
-            <AlertCircle className="w-8 h-8" />
+      <div className="flex min-h-[70vh] items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-6 rounded-3xl border border-gray-100 bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+            <AlertCircle className="h-8 w-8" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Kitchen Setup Required</h2>
-            <p className="text-xs text-gray-500 font-medium">{error}</p>
+            <h2 className="text-2xl font-black tracking-tight text-gray-900">
+              Kitchen Setup Required
+            </h2>
+            <p className="text-xs font-medium text-gray-500">{error}</p>
           </div>
           <div className="flex flex-col gap-3">
             <Button
               onClick={loadVendorData}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl h-12 uppercase tracking-widest text-xs"
+              className="h-12 rounded-xl bg-orange-600 text-xs font-black tracking-widest text-white uppercase hover:bg-orange-500"
             >
               Retry Connection
             </Button>
             <Button
               asChild
               variant="outline"
-              className="border-gray-200 text-gray-700 font-black rounded-xl h-12 uppercase tracking-widest text-xs"
+              className="h-12 rounded-xl border-gray-200 text-xs font-black tracking-widest text-gray-700 uppercase"
             >
               <Link href="/become-vendor">Configure Kitchen Profile</Link>
             </Button>
@@ -167,53 +175,62 @@ export default function VendorDashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF9] pb-32">
+      <AudioOrderAlert
+        pendingCount={stats.pendingOrders}
+        vendorId={vendorData?.id}
+        onRefresh={loadVendorData}
+      />
       {/* MISSION HERO */}
       <section className="relative overflow-hidden bg-[#1A1A1A] py-12 md:py-16">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 rounded-full blur-[120px] -mr-32 -mt-32"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-red-600/5 rounded-full blur-[100px] -ml-32 -mb-32"></div>
+        <div className="absolute top-0 right-0 -mt-32 -mr-32 h-96 w-96 rounded-full bg-orange-600/10 blur-[120px]"></div>
+        <div className="absolute bottom-0 left-0 -mb-32 -ml-32 h-64 w-64 rounded-full bg-red-600/5 blur-[100px]"></div>
 
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+        <div className="relative z-10 container mx-auto px-4">
+          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                <LayoutDashboard className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-[0.6rem] font-black text-white uppercase tracking-[0.3em] italic">
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 backdrop-blur-md">
+                <LayoutDashboard className="h-3.5 w-3.5 text-orange-500" />
+                <span className="text-[0.6rem] font-black tracking-[0.3em] text-white uppercase italic">
                   Kitchen Operations Hub
                 </span>
               </div>
 
               <div className="space-y-2">
-                <h1 className="text-4xl md:text-6xl font-black text-white tracking-tighter uppercase italic leading-none">
+                <h1 className="text-4xl leading-none font-black tracking-tighter text-white uppercase italic md:text-6xl">
                   CHEF <br />
-                  <span className="text-orange-500">{vendorData?.business_name || "Anita's Kitchen"}</span>
+                  <span className="text-orange-500">
+                    {vendorData?.business_name || "Anita's Kitchen"}
+                  </span>
                 </h1>
-                <p className="text-gray-400 font-bold uppercase tracking-[0.2em] text-xs flex items-center gap-2">
-                  Kitchen Status: <span className="text-green-400 font-black">● Online & Receiving</span>
+                <p className="flex items-center gap-2 text-xs font-bold tracking-[0.2em] text-gray-400 uppercase">
+                  Kitchen Status:{' '}
+                  <span className="font-black text-green-400">● Online & Receiving</span>
                   <span className="text-gray-600">•</span>
                   <span>{vendorData?.address || 'Pimpri-Chinchwad, Pune'}</span>
                 </p>
               </div>
 
               {/* CHEF PASS */}
-              <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-3xl p-5 flex items-center gap-5 max-w-md shadow-2xl">
-                <div className="w-16 h-16 rounded-2xl bg-orange-600 flex items-center justify-center text-white font-black text-2xl italic shadow-lg">
+              <div className="flex max-w-md items-center gap-5 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-600 text-2xl font-black text-white italic shadow-lg">
                   {vendorData?.business_name?.charAt(0) || '👩‍🍳'}
                 </div>
                 <div className="space-y-0.5">
-                  <div className="text-[0.55rem] font-black text-orange-400 uppercase tracking-widest">
+                  <div className="text-[0.55rem] font-black tracking-widest text-orange-400 uppercase">
                     VERIFIED HOME CHEF
                   </div>
-                  <div className="text-lg font-black text-white uppercase italic tracking-tight">
+                  <div className="text-lg font-black tracking-tight text-white uppercase italic">
                     {vendorData?.business_name || "Anita's Home Kitchen"}
                   </div>
-                  <div className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-orange-400" /> ID: {vendorData?.id ? vendorData.id.slice(0, 8).toUpperCase() : 'PARTNER-01'}
+                  <div className="flex items-center gap-1.5 text-[0.6rem] font-bold tracking-wider text-gray-400 uppercase">
+                    <ShieldCheck className="h-3.5 w-3.5 text-orange-400" /> ID:{' '}
+                    {vendorData?.id ? vendorData.id.slice(0, 8).toUpperCase() : 'PARTNER-01'}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex flex-wrap gap-3">
               <Button
                 size="lg"
                 onClick={() => {
@@ -227,30 +244,32 @@ export default function VendorDashboardPage() {
                   });
                 }}
                 className={`${
-                  vendorData?.is_paused ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-800 hover:bg-gray-700'
-                } text-white font-black uppercase tracking-widest h-14 px-6 rounded-2xl shadow-xl transition-all text-xs`}
+                  vendorData?.is_paused
+                    ? 'bg-red-600 hover:bg-red-500'
+                    : 'bg-gray-800 hover:bg-gray-700'
+                } h-14 rounded-2xl px-6 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all`}
               >
                 {vendorData?.is_paused ? '⏸️ Kitchen Paused' : '⚡ Pause Orders (30m)'}
               </Button>
 
               <Button
                 size="lg"
-                className="bg-amber-600 hover:bg-amber-500 text-white font-black uppercase tracking-widest h-14 px-7 rounded-2xl shadow-xl transition-all text-xs"
+                className="h-14 rounded-2xl bg-amber-600 px-7 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-amber-500"
                 asChild
               >
                 <Link href="/subscriber-broadcast">
-                  <Megaphone className="w-4 h-4 mr-2" />
+                  <Megaphone className="mr-2 h-4 w-4" />
                   Kitchen Circle & Broadcast
                 </Link>
               </Button>
 
               <Button
                 size="lg"
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest h-14 px-8 rounded-2xl shadow-xl transition-all text-xs"
+                className="h-14 rounded-2xl bg-orange-600 px-8 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-orange-500"
                 asChild
               >
                 <Link href="/menu-management">
-                  <UtensilsCrossed className="w-4 h-4 mr-2" />
+                  <UtensilsCrossed className="mr-2 h-4 w-4" />
                   Manage Menu
                 </Link>
               </Button>
@@ -259,26 +278,22 @@ export default function VendorDashboardPage() {
         </div>
       </section>
 
-      <div className="container mx-auto px-4 -mt-8 relative z-20">
+      <div className="relative z-20 container mx-auto -mt-8 px-4">
         <div className="space-y-10">
           {/* Stats Overview */}
           <StatsOverview stats={stats} />
 
           {/* Chef Batch Prep Calculator & Kitchen Capacity Hub */}
-          <BatchPrepHub
-            orders={allOrders}
-            vendor={vendorData}
-            onRefresh={loadVendorData}
-          />
+          <BatchPrepHub orders={allOrders} vendor={vendorData} onRefresh={loadVendorData} />
 
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid gap-8 lg:grid-cols-3">
             {/* Recent Orders */}
             <div className="lg:col-span-2">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight">
+                <h2 className="text-2xl font-black tracking-tight text-gray-900 uppercase italic">
                   Live Orders & Ingestion
                 </h2>
-                <div className="h-0.5 flex-1 bg-gray-100 mx-4"></div>
+                <div className="mx-4 h-0.5 flex-1 bg-gray-100"></div>
               </div>
               <RecentOrders orders={orders} onUpdateStatus={handleUpdateStatus} />
             </div>
@@ -286,7 +301,7 @@ export default function VendorDashboardPage() {
             {/* Quick Actions */}
             <div className="lg:col-span-1">
               <div className="mb-4 flex items-center gap-4">
-                <h2 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight">
+                <h2 className="text-2xl font-black tracking-tight text-gray-900 uppercase italic">
                   Kitchen Controls
                 </h2>
                 <div className="h-0.5 flex-1 bg-gray-100"></div>

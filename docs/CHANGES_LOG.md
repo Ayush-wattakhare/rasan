@@ -2,6 +2,55 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-15] - Payment Webhook Idempotency, Transactional SMS/WhatsApp Gateway & Production Runbook
+
+- **Date & Time:** 2026-10-15 00:58 IST
+- **Objective:** Complete Pillar 2 (Razorpay webhook idempotency, duplicate retry protection, payment.failed handling), Pillar 4 (pluggable transactional SMS & WhatsApp messaging service with zero-cost mock fallback), and Pillar 5 (production launch pre-flight runbook for Migration 005 and custom domain mapping).
+- **Implementation Plan:**
+  1. Harden `app/api/payments/webhook/route.ts` with explicit idempotency check (`order.payment_status === 'paid'` returns 200 immediately), support `order.paid` and `payment.failed`, and dispatch customer notifications.
+  2. Implement `lib/notifications/transactional.ts` supporting Fast2SMS, MSG91, Twilio, Meta WhatsApp Cloud API, and graceful fallback logging.
+  3. Create `docs/PRODUCTION_LAUNCH_CHECKLIST.md` with step-by-step instructions for Migration 005 execution in Supabase, Razorpay webhook configuration, Vercel environment variables, and custom domain DNS records.
+  4. Document environment variables in `.env.example`.
+- **Files Modified / Created:**
+  - `app/api/payments/webhook/route.ts` - Hardened with idempotency check, payment.failed handler, and notification trigger.
+  - `lib/notifications/transactional.ts` - Pluggable SMS & WhatsApp transactional notification service.
+  - `.env.example` - Documented RAZORPAY_WEBHOOK_SECRET and transactional provider keys.
+  - `docs/PRODUCTION_LAUNCH_CHECKLIST.md` - Production launch checklist and runbook.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed (Local Only - Not Pushed as requested)
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` (`tsc --noEmit`) passed with 0 errors.
+  - Test Suite: `npm test` (`jest`) passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted with Prettier.
+
+---
+
+### [2026-10-15] - Master 100% Launch Roadmap & Final Pre-flight Architecture
+
+- **Date & Time:** 2026-10-15 00:32 IST
+- **Objective:** Establish the comprehensive 5-pillar execution roadmap to bring Rasan from 88% readiness to 100% production launch readiness across payments, kitchen audio notifications, rider GPS tracking, SMS/WhatsApp gateways, and production pre-flight checks.
+- **Implementation Plan:**
+  1. Pillar 1: Kitchen Realtime Chime & Live Order Queue (`lib/utils/audio-chime.ts` Web Audio API synthesizer, Supabase realtime order listener).
+  2. Pillar 2: Payment Gateway & Webhook Hardening (Razorpay signature verification, payment capture idempotency).
+  3. Pillar 3: Realtime Rider GPS Location Streaming (`navigator.geolocation.watchPosition` throttled sync to PostGIS point).
+  4. Pillar 4: Pluggable SMS & WhatsApp Notification Service (`lib/notifications/transactional.ts` supporting Fast2SMS, MSG91, Twilio).
+  5. Pillar 5: Production Pre-Flight Verification & Launch Runbook.
+- **Files Modified / Created:**
+  - `lib/utils/audio-chime.ts` - Zero-asset Web Audio API dual-tone brass chime generator with persistence.
+  - `components/vendor/audio-order-alert.tsx` - Supabase Realtime channel subscription on orders with auto-refresh and mute toggle.
+  - `app/(vendor)/vendor-dashboard/page.tsx` - Mounted realtime audio order alert on vendor operations dashboard.
+  - `lib/hooks/use-rider-location.ts` - Battery-efficient throttled rider GPS tracker with Haversine distance threshold.
+  - `components/delivery/location-tracker.tsx` - Enabled automatic hardware GPS tracking when rider duty status is online.
+  - `docs/LAUNCH_ROADMAP_100_PERCENT.md` - Master 5-pillar launch roadmap.
+  - `docs/CHANGES_LOG.md` - Recorded plan and completed steps.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` (`tsc --noEmit`) passed with 0 errors.
+  - Test Suite: `npm test` (`jest`) passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted and verified with Prettier.
+
+---
+
 ### [2026-10-14] - Delivery Rider Management Overhaul: Delete Rider API & Decline Fix
 
 - **Date & Time:** 2026-10-14 23:44 IST
