@@ -2,7 +2,31 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-14] - Vendor Registry Overhaul: Delete Vendor API, Block Action & Pending Filter Fix
+
+- **Date & Time:** 2026-10-14 22:38 IST
+- **Objective:** Fix inability to decline, deactivate, or block vendors from the Vendor Registry table, add dedicated "Delete Vendor" action with confirmation dialog, and filter out declined/blocked vendors from the Pending Approvals tab.
+- **Implementation Plan:**
+  1. Create `DELETE /api/admin/vendors/[id]` API route to delete vendor records with cascade and reset profile role to `customer`.
+  2. Enhance `components/admin/verification-actions.tsx`: add `vendorId` prop, add "Block Partner" action, add "Delete Vendor" with confirmation dialog, and fix deactivation toggle for pending applicants.
+  3. Update `components/admin/vendor-table.tsx` to pass `vendorId={vendor.id}` and `role="vendor"`.
+  4. Fix query in `app/(admin)/vendor-management/page.tsx`: select `documents` and `profile.is_active`; exclude declined or blocked applicants from the "Pending Approvals" tab so declined vendors immediately vanish.
+- **Files Modified / Created:**
+  - `app/api/admin/vendors/[id]/route.ts` - New DELETE endpoint for vendors.
+  - `components/admin/verification-actions.tsx` - Added Delete Vendor, Block Partner, and confirmation modal.
+  - `components/admin/vendor-table.tsx` - Pass vendorId and role.
+  - `app/(admin)/vendor-management/page.tsx` - Filter out declined/blocked from pending approvals.
+  - `docs/CHANGES_LOG.md` - Recorded plan.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted and verified with Prettier.
+
+---
+
 ### [2026-10-14] - Global Route Integrity Audit & Delivery Verification Bug Fix
+
 - **Date & Time:** 2026-10-14 22:30 IST
 - **Objective:** Exhaustive codebase audit for broken routes, dynamic links, and API fetches. Discovered and resolved role mismatch bug in `VerificationActions` where delivery partner verification was hardcoded as vendor.
 - **Implementation Plan:**
