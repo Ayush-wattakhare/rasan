@@ -37,6 +37,7 @@ interface Vendor {
     name: string;
     email: string;
   };
+  documents?: any;
 }
 
 interface VendorTableProps {

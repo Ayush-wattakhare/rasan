@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import VendorTable from '@/components/admin/vendor-table';
 import { AdminAddVendorDrawer } from '@/components/admin/admin-add-vendor-drawer';
 import { ShieldCheck, Store, BarChart3 } from 'lucide-react';
@@ -8,7 +8,7 @@ import Link from 'next/link';
 export default async function AdminVendorManagementPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const searchParams = await props.searchParams;
 
   let query = supabase
@@ -58,6 +58,7 @@ export default async function AdminVendorManagementPage(props: {
     total_orders: v.total_orders,
     created_at: v.created_at,
     profile: v.profile,
+    documents: v.documents,
   }));
 
   return (

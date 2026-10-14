@@ -15,8 +15,9 @@ This document maintains a dated, chronological record of all features, fixes, ar
   - `app/api/admin/vendors/[id]/route.ts` - New DELETE endpoint for vendors.
   - `components/admin/verification-actions.tsx` - Added Delete Vendor, Block Partner, and confirmation modal.
   - `components/admin/vendor-table.tsx` - Pass vendorId and role.
-  - `app/(admin)/vendor-management/page.tsx` - Filter out declined/blocked from pending approvals.
-  - `docs/CHANGES_LOG.md` - Recorded plan.
+  - `app/(admin)/vendor-management/page.tsx` - Switched to `createServiceClient()` to resolve Postgres column-level permission denied error on `documents`, and filtered out declined/blocked applicants from pending approvals.
+  - `app/(admin)/delivery-management/page.tsx` - Switched to `createServiceClient()` for consistent admin permissions.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
 - **Status:** Completed
 - **Verification / Testing:**
   - TypeScript Compilation: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
