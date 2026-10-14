@@ -15,12 +15,14 @@ interface VerificationActionsProps {
   userId: string;
   isVerified: boolean;
   isActive: boolean;
+  role?: 'customer' | 'vendor' | 'delivery' | 'admin' | string;
 }
 
 export default function VerificationActions({
   userId,
   isVerified,
   isActive,
+  role = 'vendor',
 }: VerificationActionsProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -89,17 +91,30 @@ export default function VerificationActions({
   const handleAcceptRequest = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/partners/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, role: 'vendor', action: 'accept' }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to approve application');
-      toast({
-        title: 'Application Accepted! ✅',
-        description: data.message || 'User verified and account activated.',
-      });
+      if (role === 'vendor' || role === 'delivery') {
+        const response = await fetch('/api/admin/partners/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, role, action: 'accept' }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to approve application');
+        toast({
+          title: 'Application Accepted! ✅',
+          description: data.message || 'User verified and account activated.',
+        });
+      } else {
+        const response = await fetch(`/api/admin/users/${userId}/status`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_verified: true, is_active: true }),
+        });
+        if (!response.ok) throw new Error('Failed to approve application');
+        toast({
+          title: 'User Verified! ✅',
+          description: 'Account verified and activated.',
+        });
+      }
       router.refresh();
     } catch (error: any) {
       toast({ title: 'Approval Failed', description: error.message, variant: 'destructive' });
@@ -111,23 +126,37 @@ export default function VerificationActions({
   const handleDeclineRequest = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/partners/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          role: 'vendor',
-          action: 'decline',
-          reason: 'Application declined by admin from vendor registry.',
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to decline application');
-      toast({
-        title: 'Application Declined ❌',
-        description: data.message || 'Account unlinked and applicant notified.',
-        variant: 'destructive',
-      });
+      if (role === 'vendor' || role === 'delivery') {
+        const response = await fetch('/api/admin/partners/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            role,
+            action: 'decline',
+            reason: `Application declined by admin from ${role} registry.`,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to decline application');
+        toast({
+          title: 'Application Declined ❌',
+          description: data.message || 'Account unlinked and applicant notified.',
+          variant: 'destructive',
+        });
+      } else {
+        const response = await fetch(`/api/admin/users/${userId}/status`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_verified: false, is_active: false }),
+        });
+        if (!response.ok) throw new Error('Failed to decline application');
+        toast({
+          title: 'Application Declined ❌',
+          description: 'Account deactivated.',
+          variant: 'destructive',
+        });
+      }
       router.refresh();
     } catch (error: any) {
       toast({ title: 'Decline Failed', description: error.message, variant: 'destructive' });

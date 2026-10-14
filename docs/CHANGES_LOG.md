@@ -2,6 +2,29 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-14] - Global Route Integrity Audit & Delivery Verification Bug Fix
+- **Date & Time:** 2026-10-14 22:30 IST
+- **Objective:** Exhaustive codebase audit for broken routes, dynamic links, and API fetches. Discovered and resolved role mismatch bug in `VerificationActions` where delivery partner verification was hardcoded as vendor.
+- **Implementation Plan:**
+  1. Scan all 168 internal links/navigations and 103 API fetch calls (literal and template dynamic paths) against actual existing Next.js App Router pages and route handlers.
+  2. Audit Next.js 16 `params` and `searchParams` promise handling across all server components and route handlers.
+  3. Audit Supabase queries against valid Postgres database tables.
+  4. Fix discovered defect in `VerificationActions`: pass dynamic role prop (`role="delivery"`, `role="vendor"`, `role={user.role}`) so rider approvals/declines update `delivery_partners` instead of failing with vendor table mismatches.
+- **Files Modified / Created:**
+  - `components/admin/verification-actions.tsx` - Added dynamic `role` prop with role-aware dispatch to `/api/admin/partners/verify` or `/api/admin/users/[id]/status`.
+  - `components/admin/delivery-table.tsx` - Passed `role="delivery"` to `VerificationActions`.
+  - `components/admin/user-table.tsx` - Passed `role={user.role}` to `VerificationActions`.
+  - `app/(admin)/admin-dashboard/users/[id]/page.tsx` - Passed `role={targetProfile.role}` to `VerificationActions`.
+  - `docs/CHANGES_LOG.md` - Recorded audit and bug fix.
+- **Status:** Completed
+- **Verification / Testing:**
+  - Route Scan: 168/168 links matched valid pages, 103/103 API endpoints matched valid route handlers. 0 broken routes detected.
+  - TypeScript: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: Prettier check clean on all files.
+
+---
+
 ### [2026-10-14] - Partner Onboarding Flow Overhaul: Block Option & Non-Intrusive Notification
 
 - **Date & Time:** 2026-10-14 21:18 IST
