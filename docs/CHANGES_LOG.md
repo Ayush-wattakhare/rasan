@@ -2,6 +2,29 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-15] - Payment Webhook Idempotency, Transactional SMS/WhatsApp Gateway & Production Runbook
+
+- **Date & Time:** 2026-10-15 00:58 IST
+- **Objective:** Complete Pillar 2 (Razorpay webhook idempotency, duplicate retry protection, payment.failed handling), Pillar 4 (pluggable transactional SMS & WhatsApp messaging service with zero-cost mock fallback), and Pillar 5 (production launch pre-flight runbook for Migration 005 and custom domain mapping).
+- **Implementation Plan:**
+  1. Harden `app/api/payments/webhook/route.ts` with explicit idempotency check (`order.payment_status === 'paid'` returns 200 immediately), support `order.paid` and `payment.failed`, and dispatch customer notifications.
+  2. Implement `lib/notifications/transactional.ts` supporting Fast2SMS, MSG91, Twilio, Meta WhatsApp Cloud API, and graceful fallback logging.
+  3. Create `docs/PRODUCTION_LAUNCH_CHECKLIST.md` with step-by-step instructions for Migration 005 execution in Supabase, Razorpay webhook configuration, Vercel environment variables, and custom domain DNS records.
+  4. Document environment variables in `.env.example`.
+- **Files Modified / Created:**
+  - `app/api/payments/webhook/route.ts` - Hardened with idempotency check, payment.failed handler, and notification trigger.
+  - `lib/notifications/transactional.ts` - Pluggable SMS & WhatsApp transactional notification service.
+  - `.env.example` - Documented RAZORPAY_WEBHOOK_SECRET and transactional provider keys.
+  - `docs/PRODUCTION_LAUNCH_CHECKLIST.md` - Production launch checklist and runbook.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed (Local Only - Not Pushed as requested)
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` (`tsc --noEmit`) passed with 0 errors.
+  - Test Suite: `npm test` (`jest`) passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted with Prettier.
+
+---
+
 ### [2026-10-15] - Master 100% Launch Roadmap & Final Pre-flight Architecture
 
 - **Date & Time:** 2026-10-15 00:32 IST
