@@ -31,35 +31,77 @@ async function handleUpdate(request: NextRequest, params: Promise<{ id: string }
 
   // Use service role client to bypass RLS
   const serviceClient = createServiceClient();
-  const { error } = await serviceClient
-    .from('profiles')
-    .update(updateData)
-    .eq('id', id);
+  const { error } = await serviceClient.from('profiles').update(updateData).eq('id', id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   // Also sync verification state with vendor or delivery partner tables
-  // vendors table has is_active; delivery_partners table has is_verified
-  if (is_active !== undefined) {
-    await serviceClient.from('vendors').update({ is_active }).eq('user_id', id);
-  }
-
-  if (is_verified !== undefined) {
-    await serviceClient.from('delivery_partners').update({ is_verified }).eq('user_id', id);
+  if (is_verified === false && is_active === false) {
+    // Both false indicates a decline or deactivation
+    const { data: vRecord } = await serviceClient
+      .from('vendors')
+      .select('documents')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (vRecord) {
+      const existingDocs =
+        vRecord?.documents && typeof vRecord.documents === 'object' ? vRecord.documents : {};
+      await serviceClient
+        .from('vendors')
+        .update({
+          is_active: false,
+          documents: {
+            ...existingDocs,
+            application_status: 'declined',
+            declined_at: new Date().toISOString(),
+          },
+        })
+        .eq('user_id', id);
+    }
+    const { data: dRecord } = await serviceClient
+      .from('delivery_partners')
+      .select('documents')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (dRecord) {
+      const existingDocs =
+        dRecord?.documents && typeof dRecord.documents === 'object' ? dRecord.documents : {};
+      await serviceClient
+        .from('delivery_partners')
+        .update({
+          is_verified: false,
+          documents: {
+            ...existingDocs,
+            application_status: 'declined',
+            declined_at: new Date().toISOString(),
+          },
+        })
+        .eq('user_id', id);
+    }
+  } else {
+    if (is_active !== undefined) {
+      await serviceClient.from('vendors').update({ is_active }).eq('user_id', id);
+    }
+    if (is_verified !== undefined) {
+      await serviceClient.from('delivery_partners').update({ is_verified }).eq('user_id', id);
+    }
   }
 
   // Send partner acceptance notification if verified
   if (is_verified === true) {
     try {
-      await serviceClient.from('notifications').insert([{
-        user_id: id,
-        type: 'system',
-        title: 'Application Accepted! 🎉',
-        message: 'Congratulations! Your partnership application has been approved by admin. You can now access your partner portal.',
-        is_read: false,
-      }]);
+      await serviceClient.from('notifications').insert([
+        {
+          user_id: id,
+          type: 'system',
+          title: 'Application Accepted! 🎉',
+          message:
+            'Congratulations! Your partnership application has been approved by admin. You can now access your partner portal.',
+          is_read: false,
+        },
+      ]);
     } catch {
       // Non-critical notification failure
     }
@@ -68,17 +110,10 @@ async function handleUpdate(request: NextRequest, params: Promise<{ id: string }
   return NextResponse.json({ success: true });
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleUpdate(request, params);
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleUpdate(request, params);
 }
-

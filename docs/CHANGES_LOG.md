@@ -2,8 +2,108 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-14] - Delivery Rider Management Overhaul: Delete Rider API & Decline Fix
+
+- **Date & Time:** 2026-10-14 23:44 IST
+- **Objective:** Fix rider decline button not updating UI in Delivery Registry, add dedicated "Delete Rider" API endpoint and confirmation action, and filter out declined/blocked riders from the Pending Applications tab.
+- **Implementation Plan:**
+  1. Create `DELETE /api/admin/delivery-partners/[id]` API route to remove delivery partners from registry and reset profile role to `customer`.
+  2. Enhance `components/admin/verification-actions.tsx`: support `partnerId` prop for delivery partners, add "Delete Rider" action with confirmation dialog, and ensure decline/block updates UI correctly.
+  3. Update `components/admin/delivery-table.tsx` to pass `partnerId={partner.id}` and `role="delivery"`.
+  4. Fix query in `app/(admin)/delivery-management/page.tsx`: select `documents` and `profile.is_active`; exclude declined or blocked riders from the "Pending Applications" tab (`?verified=false`).
+- **Files Modified / Created:**
+  - `app/api/admin/delivery-partners/[id]/route.ts` - New DELETE endpoint for delivery partners with order cascade handling, profile role demotion, and notifications.
+  - `app/api/admin/partners/verify/route.ts` - Resolved target partner by either ID or user ID, ensured profile role demotion to customer on decline, and unified notifications.
+  - `components/admin/verification-actions.tsx` - Added `partnerId` and `applicationStatus` props, Delete Rider option in dropdown, dynamic confirmation dialog, and contextual button visibility.
+  - `components/admin/delivery-table.tsx` - Passed `partnerId` and `applicationStatus` to `VerificationActions`, and added DECLINED and BLOCKED status badge styling.
+  - `components/admin/vendor-table.tsx` - Passed `applicationStatus` to `VerificationActions` and rendered DECLINED and BLOCKED badges consistently.
+  - `app/(admin)/delivery-management/page.tsx` - Selected `documents` and `profile.is_active`, and filtered out declined/blocked applicants from the "Pending Applications" tab (`?verified=false`).
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` (`tsc --noEmit`) passed with 0 errors.
+  - Test Suite: `npm test` (`jest`) passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted and verified with Prettier.
+
+---
+
+### [2026-10-14] - Vendor Registry Overhaul: Delete Vendor API, Block Action & Pending Filter Fix
+
+- **Date & Time:** 2026-10-14 22:38 IST
+- **Objective:** Fix inability to decline, deactivate, or block vendors from the Vendor Registry table, add dedicated "Delete Vendor" action with confirmation dialog, and filter out declined/blocked vendors from the Pending Approvals tab.
+- **Implementation Plan:**
+  1. Create `DELETE /api/admin/vendors/[id]` API route to delete vendor records with cascade and reset profile role to `customer`.
+  2. Enhance `components/admin/verification-actions.tsx`: add `vendorId` prop, add "Block Partner" action, add "Delete Vendor" with confirmation dialog, and fix deactivation toggle for pending applicants.
+  3. Update `components/admin/vendor-table.tsx` to pass `vendorId={vendor.id}` and `role="vendor"`.
+  4. Fix query in `app/(admin)/vendor-management/page.tsx`: select `documents` and `profile.is_active`; exclude declined or blocked applicants from the "Pending Approvals" tab so declined vendors immediately vanish.
+- **Files Modified / Created:**
+  - `app/api/admin/vendors/[id]/route.ts` - New DELETE endpoint for vendors.
+  - `components/admin/verification-actions.tsx` - Added Delete Vendor, Block Partner, and confirmation modal.
+  - `components/admin/vendor-table.tsx` - Pass vendorId and role.
+  - `app/(admin)/vendor-management/page.tsx` - Switched to `createServiceClient()` to resolve Postgres column-level permission denied error on `documents`, and filtered out declined/blocked applicants from pending approvals.
+  - `app/(admin)/delivery-management/page.tsx` - Switched to `createServiceClient()` for consistent admin permissions.
+  - `docs/CHANGES_LOG.md` - Recorded changes.
+- **Status:** Completed
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: All modified files formatted and verified with Prettier.
+
+---
+
+### [2026-10-14] - Global Route Integrity Audit & Delivery Verification Bug Fix
+
+- **Date & Time:** 2026-10-14 22:30 IST
+- **Objective:** Exhaustive codebase audit for broken routes, dynamic links, and API fetches. Discovered and resolved role mismatch bug in `VerificationActions` where delivery partner verification was hardcoded as vendor.
+- **Implementation Plan:**
+  1. Scan all 168 internal links/navigations and 103 API fetch calls (literal and template dynamic paths) against actual existing Next.js App Router pages and route handlers.
+  2. Audit Next.js 16 `params` and `searchParams` promise handling across all server components and route handlers.
+  3. Audit Supabase queries against valid Postgres database tables.
+  4. Fix discovered defect in `VerificationActions`: pass dynamic role prop (`role="delivery"`, `role="vendor"`, `role={user.role}`) so rider approvals/declines update `delivery_partners` instead of failing with vendor table mismatches.
+- **Files Modified / Created:**
+  - `components/admin/verification-actions.tsx` - Added dynamic `role` prop with role-aware dispatch to `/api/admin/partners/verify` or `/api/admin/users/[id]/status`.
+  - `components/admin/delivery-table.tsx` - Passed `role="delivery"` to `VerificationActions`.
+  - `components/admin/user-table.tsx` - Passed `role={user.role}` to `VerificationActions`.
+  - `app/(admin)/admin-dashboard/users/[id]/page.tsx` - Passed `role={targetProfile.role}` to `VerificationActions`.
+  - `docs/CHANGES_LOG.md` - Recorded audit and bug fix.
+- **Status:** Completed
+- **Verification / Testing:**
+  - Route Scan: 168/168 links matched valid pages, 103/103 API endpoints matched valid route handlers. 0 broken routes detected.
+  - TypeScript: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
+  - Test Suite: `npm test` passed 10/10 test suites (117/117 unit/integration tests).
+  - Code Formatting: Prettier check clean on all files.
+
+---
+
+### [2026-10-14] - Partner Onboarding Flow Overhaul: Block Option & Non-Intrusive Notification
+
+- **Date & Time:** 2026-10-14 21:18 IST
+- **Objective:** Fix recurring Super Chef modal popup bug on decline, add account blocking option, and replace intrusive modal auto-popup with a non-blocking notification badge and click-to-review application drawer.
+- **Implementation Plan:**
+  1. Root cause remediation in `/api/admin/partners/verify`: persist `application_status: 'declined'` or `'blocked'` in `documents` JSONB, demote unapproved applicants or deactivate blocked profiles (`is_active: false`).
+  2. Implement `block` action in `/api/admin/partners/verify` to permanently ban partner accounts and stop all future requests.
+  3. Update `/api/admin/partners/pending`: filter out inactive/blocked profiles and previously declined/blocked applications so they never reappear in the pending queue.
+  4. Redesign `components/admin/partner-application-listener.tsx`: remove forced popup on initial load; render a sleek, high-visibility floating notification pill (`New Application Received (N) - Review Applications`); open modal only upon deliberate admin click.
+  5. Enhance review dialog with multi-application browsing (pagination), applicant details, and 3 explicit actions: Accept & Activate, Decline (with feedback), and Block Partner.
+- **Files Modified / Created:**
+  - `app/api/admin/partners/verify/route.ts` - Added `block` action, merged audit status into `documents` JSONB, demoted declined profiles to `customer`, and handled suspension.
+  - `app/api/admin/partners/pending/route.ts` - Filtered out inactive/blocked profiles and previously declined/blocked applications.
+  - `app/api/admin/users/[id]/status/route.ts` - Added synchronization of `application_status: 'declined'` to `vendors` and `delivery_partners` documents.
+  - `types/index.ts` - Expanded `VendorDocuments` and `DeliveryDocuments` interfaces with optional application status and audit fields.
+  - `components/admin/partner-application-listener.tsx` - Replaced intrusive modal auto-popup with a floating notification pill (`New Application Received (N)`), pagination between multiple applications, and 3 explicit actions (Accept & Activate, Decline with feedback, and Block Partner).
+  - `components/admin/verification-actions.tsx` - Routed registry table accept/decline actions through the unified `/api/admin/partners/verify` endpoint.
+  - `docs/CHANGES_LOG.md` - Recorded task changes and verification.
+- **Status:** Completed (PR #11 created)
+- **Pull Request:** [PR #11: feat: startup launch master plan, admin persistence, and partner onboarding overhaul](https://github.com/Ayush-wattakhare/rasan/pull/11)
+- **Verification / Testing:**
+  - TypeScript Compilation: `npm run type-check` passed with 0 errors (`tsc --noEmit` code 0).
+  - Unit/Integration Tests: `npm test` passed 10/10 test suites (117/117 unit/integration tests passed in 23.6s).
+  - Production Build: `npm run build` completed with code 0 (all 99 dynamic and static routes compiled cleanly).
+
+---
 
 ### [2026-10-14] - Startup Launch Master Plan & Admin Database Persistence
+
 - **Date & Time:** 2026-10-14 20:25 IST
 - **Objective:** Deep architectural audit, master solution plan, and migration implementation to bring Rasan from 85% MVP to 100% startup launch readiness. Eliminate volatile in-memory arrays in Admin APIs (`support_tickets`, `refunds`, `settlements`, `broadcasts`) by creating database migration 005, linking settlements directly to the atomic `payouts` table, and updating Database TypeScript interfaces.
 - **Implementation Plan:**
@@ -34,6 +134,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-14] - Broken Routes Resolution & Production Stability Hardening
+
 - **Date & Time:** 2026-10-14 01:10 IST
 - **Objective:** Fix broken routes (/sitemap, /accessibility, /users), correct PostgREST relation alias mismatch in vendor management, secure the unauthenticated /admin route, add self-healing profile fallback in checkout, and guard meal details against null vendor.
 - **Implementation Plan:**
@@ -62,6 +163,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-13] - Pre-Push Bug Fixes & Production Risk Remediation
+
 - **Date & Time:** 2026-10-13 22:05 IST
 - **Objective:** Fix 2 confirmed bugs (Skip-day invalid extension date loop guard and Admin user search filter injection) and 3 production risks (standardize admin verification guard, guard JSON request parsing against malformed payloads, document rate limiting strategy) before pushing to main branch.
 - **Implementation Plan:**
@@ -87,6 +189,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-13] - Fix Customer Dashboard Blank View & Profile Settings Access for Google OAuth Users
+
 - **Date & Time:** 2026-10-13 02:15 IST
 - **Objective:** Fix the issue where logging in via Google OAuth caused the Customer Dashboard middle section to render blank and prevented navigation to Profile Settings (`/profile`).
 - **Root Cause:**
@@ -116,6 +219,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-13] - Production Authentication Hardening: Purged Mock OTPs & Secured Google + Email/Mobile Auth
+
 - **Date & Time:** 2026-10-13 00:37 IST
 - **Objective:** Eliminate security risks and protect the deployed production application by purging all mock/trial OTP endpoints (`123456`) and backdoor logic. Securely configure 1-tap Google (Gmail) OAuth alongside standard bcrypt-encrypted Email authentication and capture mobile numbers as verified delivery contact info without paid SMS gateway dependencies.
 - **Implementation Plan:**
@@ -141,6 +245,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-13] - Google (Gmail) OAuth & Zero-Cost Phone Auth (Twilio-Free Mode)
+
 - **Date & Time:** 2026-10-13 00:26 IST
 - **Objective:** Eliminate expensive Twilio SMS dependency by adding free 1-tap Google (Gmail) OAuth on registration and login, coupled with an intelligent zero-cost phone authentication server route supporting dev test mode (`123456`) and auto-provisioned sessions.
 - **Implementation Plan:**
@@ -165,6 +270,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-12] - Mobile Number OTP Authentication & Customer Registration Redesign
+
 - **Date & Time:** 2026-10-12 23:25 IST
 - **Objective:** Redesign customer registration into an industry-standard, mobile-first OTP flow (Swiggy / Zomato pattern) with phone verification before password setup, while adding a dual Mobile OTP / Email tab switcher to the login experience.
 - **Implementation Plan:**
@@ -191,6 +297,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-11] - Customer Delivery Address Overhaul: Flat No, Landmark, PIN Code & GPS Auto-Detection
+
 - **Date & Time:** 2026-10-11 23:58 IST
 - **Objective:** Overhaul the customer address management page (`components/profile/address-manager.tsx` and `app/(customer)/profile/page.tsx`). Remove confusing raw Latitude/Longitude input fields and replace them with standard Indian delivery address fields (Flat/House No, Building/Society Name, Street/Area, Landmark, PIN Code, Address Type, Contact Info) plus a 1-click GPS auto-detect button with background coordinates and floating dock padding (`pb-32`).
 - **Implementation Plan:**
@@ -219,6 +326,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-11] - Custom Delivery Time AM/PM Controls & Time-of-Day Note (Morning/Afternoon/Night)
+
 - **Date & Time:** 2026-10-11 23:08 IST
 - **Objective:** Enable clear AM / PM selection for custom delivery break slots in the cart, eliminating native 24-hour browser ambiguities (e.g. typing 02:00 defaulting to 02:00 AM). In addition, display contextual time-of-day indicators (Morning, Afternoon, Evening, Night) beside and below the selected time slot.
 - **Implementation Plan:**
@@ -242,6 +350,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-11] - Option A: Clean Whole Rupee Pricing Standard & Price Parity
+
 - **Date & Time:** 2026-10-11 20:20 IST
 - **Objective:** Fix price discrepancy between Explore menu card (e.g. ₹149.78 / ₹198.97) and Shopping Bag / Cart Summary (₹150 / ₹199) that caused customer confusion and fraud concerns. Implement Option A (Clean Whole Rupee standard) across the database, service queries, and cart computations.
 - **Implementation Plan:**
@@ -266,6 +375,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-11] - Multi-Vendor Cart Crash Fix & Smart "Replace & Add" Modal
+
 - **Date & Time:** 2026-10-11 19:03 IST
 - **Objective:** Fix the fatal React error boundary crash ("This page couldn't load") when adding a meal from a second home kitchen, and implement a smart, Swiggy/Zomato-style "Replace & Add" dialog so users can seamlessly switch home kitchens with one tap.
 - **Implementation Plan:**
@@ -286,6 +396,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-11] - Quick Add to Cart & Student/Worker Lunch Break Delivery Slot
+
 - **Date & Time:** 2026-10-11 18:27 IST
 - **Objective:** Enable direct 1-click addition of meals to the cart from the Explore page (`+` icon on meal cards) without navigating to the meal details page, and add a dedicated lunch break delivery time slot picker for Daily orders tailored for students and working professionals.
 - **Implementation Plan:**
@@ -310,6 +421,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-10] - Customer Dashboard UI Compactness & Food-First Elevation
+
 - **Date & Time:** 2026-10-10T15:45:00+05:30
 - **Objective:** Fix the oversized customer dashboard banner which occupied the entire viewport and forced users to scroll down past a cold dark screen to see meals. Streamline header height to < 140px, add quick category filter chips, and bring trending food items above the fold.
 - **Implementation Plan:**
@@ -326,6 +438,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-10] - Subscriber-Exclusive Feature Gating (Kitchen Circle & Tomorrow's Menu)
+
 - **Date & Time:** 2026-10-10T01:13:43+05:30
 - **Objective:** Restrict access to the live Kitchen Circle chef broadcast and Tomorrow's Menu preview so only customers with an active weekly or monthly subscription can access them, while non-subscribers see an upgrade prompt.
 - **Implementation Plan:**
@@ -340,6 +453,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-09] - Vercel Next.js 16 Static Build & Supabase Middleware Hardening
+
 - **Date & Time:** 2026-10-09T21:51:52+05:30
 - **Objective:** Fix Vercel build failures caused by missing Supabase credentials during static page prerendering (`/meals/[id]`), and protect Next.js middleware against missing runtime environment variables.
 - **Implementation Plan:**
@@ -357,6 +471,7 @@ This document maintains a dated, chronological record of all features, fixes, ar
 ---
 
 ### [2026-10-09] - Multi-Persona Switcher Dock Removal for Production
+
 - **Date & Time:** 2026-10-09T19:11:00+05:30
 - **Objective:** Remove the floating developer persona emulation dock and simulator launcher from the root layout to prepare the application for real customer and partner presentation.
 - **Implementation Plan:**

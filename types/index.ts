@@ -104,14 +104,28 @@ export interface BankDetails {
 }
 
 export interface VendorDocuments {
-  fssai_license: string;
-  gst_number: string;
+  fssai_license?: string;
+  gst_number?: string | null;
+  application_status?: 'pending' | 'approved' | 'declined' | 'blocked' | string;
+  decline_reason?: string;
+  declined_at?: string;
+  block_reason?: string;
+  blocked_at?: string;
+  approved_at?: string;
+  [key: string]: unknown;
 }
 
 export interface DeliveryDocuments {
-  driving_license: string;
-  vehicle_rc: string;
-  insurance: string;
+  driving_license?: string;
+  vehicle_rc?: string;
+  insurance?: string;
+  application_status?: 'pending' | 'approved' | 'declined' | 'blocked' | string;
+  decline_reason?: string;
+  declined_at?: string;
+  block_reason?: string;
+  blocked_at?: string;
+  approved_at?: string;
+  [key: string]: unknown;
 }
 
 export interface Earnings {
