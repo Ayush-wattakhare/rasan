@@ -2,20 +2,20 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { 
-  MapPin, 
-  Navigation, 
-  Wifi, 
-  WifiOff, 
-  Zap, 
-  AlertTriangle, 
+import {
+  MapPin,
+  Navigation,
+  Wifi,
+  WifiOff,
+  Zap,
+  AlertTriangle,
   CheckCircle,
   Play,
   Square,
   FastForward,
   RotateCcw,
   Compass,
-  ArrowRight
+  ArrowRight,
 } from 'lucide-react';
 
 interface LatLng {
@@ -67,7 +67,11 @@ function haversineDistance(pt1: LatLng, pt2: LatLng): number {
   return R * c;
 }
 
-export default function LocationTracker({ deliveryPartnerId, isActive, activeOrder }: LocationTrackerProps) {
+export default function LocationTracker({
+  deliveryPartnerId,
+  isActive,
+  activeOrder,
+}: LocationTrackerProps) {
   const [isTracking, setIsTracking] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,25 +96,28 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
     return { lat: 18.6429, lng: 73.8129 }; // ~2km away in Pune
   })();
 
-  const pushLocationToServer = useCallback(async (lat: number, lng: number, accuracy: number = 10) => {
-    try {
-      await Promise.allSettled([
-        fetch(`/api/delivery/update-location`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deliveryPartnerId, latitude: lat, longitude: lng }),
-        }),
-        fetch(`/api/delivery-partners/${deliveryPartnerId}/location`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat, lng }),
-        }),
-      ]);
-      setLastUpdate(new Date());
-    } catch (err) {
-      console.warn('Location broadcast warning:', err);
-    }
-  }, [deliveryPartnerId]);
+  const pushLocationToServer = useCallback(
+    async (lat: number, lng: number, accuracy: number = 10) => {
+      try {
+        await Promise.allSettled([
+          fetch(`/api/delivery/update-location`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deliveryPartnerId, latitude: lat, longitude: lng }),
+          }),
+          fetch(`/api/delivery-partners/${deliveryPartnerId}/location`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lng }),
+          }),
+        ]);
+        setLastUpdate(new Date());
+      } catch (err) {
+        console.warn('Location broadcast warning:', err);
+      }
+    },
+    [deliveryPartnerId]
+  );
 
   // -- Check permission status on mount ----------------------------------------
   useEffect(() => {
@@ -123,6 +130,15 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
       })
       .catch(() => setPermission('unknown'));
   }, []);
+
+  // -- Auto-activate device GPS when partner is active/online ----------------
+  useEffect(() => {
+    if (isActive && !isSimulating) {
+      setIsTracking(true);
+    } else if (!isActive) {
+      setIsTracking(false);
+    }
+  }, [isActive, isSimulating]);
 
   // -- Core Hardware GPS tracking logic ----------------------------------------
   useEffect(() => {
@@ -145,11 +161,18 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
 
       if (age > STALE_THRESHOLD) return;
 
-      const newFix: GpsFix = { lat: latitude, lng: longitude, accuracy, speed, timestamp: pos.timestamp };
+      const newFix: GpsFix = {
+        lat: latitude,
+        lng: longitude,
+        accuracy,
+        speed,
+        timestamp: pos.timestamp,
+      };
 
-      const bestAccuracy = fixHistory.current.length > 0
-        ? Math.min(...fixHistory.current.map(f => f.accuracy))
-        : Infinity;
+      const bestAccuracy =
+        fixHistory.current.length > 0
+          ? Math.min(...fixHistory.current.map((f) => f.accuracy))
+          : Infinity;
       if (accuracy > ACCURACY_CUTOFF && bestAccuracy < ACCURACY_CUTOFF) return;
 
       const smoothed = smoothFix(fixHistory.current, newFix);
@@ -216,7 +239,14 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
     return () => {
       if (simTimerRef.current) clearInterval(simTimerRef.current);
     };
-  }, [isSimulating, originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng, pushLocationToServer]);
+  }, [
+    isSimulating,
+    originCoords.lat,
+    originCoords.lng,
+    destCoords.lat,
+    destCoords.lng,
+    pushLocationToServer,
+  ]);
 
   const toggleSimulation = () => {
     if (isSimulating) {
@@ -252,26 +282,40 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
     : haversineDistance(originCoords, destCoords).toFixed(1);
 
   return (
-    <div className="bg-[#141414] border border-white/10 rounded-3xl p-5 space-y-4 shadow-xl">
+    <div className="space-y-4 rounded-3xl border border-white/10 bg-[#141414] p-5 shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-            isSimulating ? 'bg-orange-500/20 text-orange-400' : isTracking ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-gray-400'
-          }`}>
-            <Navigation className={`w-5 h-5 ${isSimulating || isTracking ? 'animate-pulse' : ''}`} />
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+              isSimulating
+                ? 'bg-orange-500/20 text-orange-400'
+                : isTracking
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-white/5 text-gray-400'
+            }`}
+          >
+            <Navigation
+              className={`h-5 w-5 ${isSimulating || isTracking ? 'animate-pulse' : ''}`}
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-black text-white uppercase tracking-wider">Live GPS & Route Engine</h3>
+              <h3 className="text-xs font-black tracking-wider text-white uppercase">
+                Live GPS & Route Engine
+              </h3>
               {isSimulating && (
-                <span className="bg-orange-500/20 text-orange-400 text-[0.55rem] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border border-orange-500/30">
+                <span className="rounded-full border border-orange-500/30 bg-orange-500/20 px-2 py-0.5 text-[0.55rem] font-black tracking-widest text-orange-400 uppercase">
                   Simulation Mode
                 </span>
               )}
             </div>
-            <p className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
-              {isSimulating ? 'Simulating en-route movement to customer' : isTracking ? 'Broadcasting live device GPS' : 'Offline / Standby'}
+            <p className="mt-0.5 text-[0.6rem] font-bold tracking-widest text-gray-400 uppercase">
+              {isSimulating
+                ? 'Simulating en-route movement to customer'
+                : isTracking
+                  ? 'Broadcasting live device GPS'
+                  : 'Offline / Standby'}
             </p>
           </div>
         </div>
@@ -285,13 +329,13 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
             }}
             disabled={!isActive}
             size="sm"
-            className={`h-8 px-3 rounded-xl font-black uppercase tracking-widest text-[0.6rem] cursor-pointer ${
+            className={`h-8 cursor-pointer rounded-xl px-3 text-[0.6rem] font-black tracking-widest uppercase ${
               isTracking
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-white/10 hover:bg-white/15 text-gray-300'
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-white/10 text-gray-300 hover:bg-white/15'
             }`}
           >
-            {isTracking ? <WifiOff className="w-3 h-3 mr-1" /> : <Wifi className="w-3 h-3 mr-1" />}
+            {isTracking ? <WifiOff className="mr-1 h-3 w-3" /> : <Wifi className="mr-1 h-3 w-3" />}
             {isTracking ? 'Stop GPS' : 'Device GPS'}
           </Button>
 
@@ -300,13 +344,13 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
             onClick={toggleSimulation}
             disabled={!isActive}
             size="sm"
-            className={`h-8 px-3 rounded-xl font-black uppercase tracking-widest text-[0.6rem] cursor-pointer ${
+            className={`h-8 cursor-pointer rounded-xl px-3 text-[0.6rem] font-black tracking-widest uppercase ${
               isSimulating
-                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30'
+                ? 'bg-orange-600 text-white hover:bg-orange-700'
+                : 'border border-orange-500/30 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
             }`}
           >
-            {isSimulating ? <Square className="w-3 h-3 mr-1" /> : <Play className="w-3 h-3 mr-1" />}
+            {isSimulating ? <Square className="mr-1 h-3 w-3" /> : <Play className="mr-1 h-3 w-3" />}
             {isSimulating ? 'Stop Sim' : 'Simulate Route'}
           </Button>
         </div>
@@ -314,15 +358,17 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
 
       {/* Simulation Controller Panel */}
       {isSimulating && (
-        <div className="bg-orange-950/20 border border-orange-500/20 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between text-[0.65rem] font-black uppercase tracking-wider text-orange-200">
+        <div className="space-y-3 rounded-2xl border border-orange-500/20 bg-orange-950/20 p-4">
+          <div className="flex items-center justify-between text-[0.65rem] font-black tracking-wider text-orange-200 uppercase">
             <span>Route Completion</span>
-            <span>{simProgress}% ({currentDistanceKm} km left)</span>
+            <span>
+              {simProgress}% ({currentDistanceKm} km left)
+            </span>
           </div>
 
-          <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-orange-500 to-amber-400 h-full transition-all duration-500 rounded-full"
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500"
               style={{ width: `${simProgress}%` }}
             />
           </div>
@@ -331,25 +377,25 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
           <div className="flex items-center justify-between gap-2 pt-1">
             <button
               onClick={() => jumpSimStep(0)}
-              className="flex-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-[0.6rem] font-black uppercase tracking-wider text-gray-300 transition cursor-pointer"
+              className="flex-1 cursor-pointer rounded-lg bg-white/5 px-2 py-1 text-[0.6rem] font-black tracking-wider text-gray-300 uppercase transition hover:bg-white/10"
             >
               Kitchen (0%)
             </button>
             <button
               onClick={() => jumpSimStep(50)}
-              className="flex-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-[0.6rem] font-black uppercase tracking-wider text-gray-300 transition cursor-pointer"
+              className="flex-1 cursor-pointer rounded-lg bg-white/5 px-2 py-1 text-[0.6rem] font-black tracking-wider text-gray-300 uppercase transition hover:bg-white/10"
             >
               Midway (50%)
             </button>
             <button
               onClick={() => jumpSimStep(90)}
-              className="flex-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-[0.6rem] font-black uppercase tracking-wider text-gray-300 transition cursor-pointer"
+              className="flex-1 cursor-pointer rounded-lg bg-white/5 px-2 py-1 text-[0.6rem] font-black tracking-wider text-gray-300 uppercase transition hover:bg-white/10"
             >
               Near Door (90%)
             </button>
             <button
               onClick={() => jumpSimStep(100)}
-              className="flex-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-[0.6rem] font-black uppercase tracking-wider text-gray-300 transition cursor-pointer"
+              className="flex-1 cursor-pointer rounded-lg bg-white/5 px-2 py-1 text-[0.6rem] font-black tracking-wider text-gray-300 uppercase transition hover:bg-white/10"
             >
               Arrived (100%)
             </button>
@@ -359,32 +405,42 @@ export default function LocationTracker({ deliveryPartnerId, isActive, activeOrd
 
       {/* Telemetry info */}
       {(isTracking || isSimulating) && currentFix && (
-        <div className="grid grid-cols-3 gap-2 bg-white/5 rounded-2xl p-3 border border-white/5 text-center">
+        <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/5 bg-white/5 p-3 text-center">
           <div>
-            <p className="text-[0.55rem] font-black text-gray-400 uppercase tracking-widest">Speed</p>
-            <p className="text-sm font-black text-white mt-0.5">
-              {Math.round((currentFix.speed || 5.5) * 3.6)} <span className="text-[0.6rem] text-gray-400">km/h</span>
+            <p className="text-[0.55rem] font-black tracking-widest text-gray-400 uppercase">
+              Speed
+            </p>
+            <p className="mt-0.5 text-sm font-black text-white">
+              {Math.round((currentFix.speed || 5.5) * 3.6)}{' '}
+              <span className="text-[0.6rem] text-gray-400">km/h</span>
             </p>
           </div>
           <div>
-            <p className="text-[0.55rem] font-black text-gray-400 uppercase tracking-widest">Est. ETA</p>
-            <p className="text-sm font-black text-orange-400 mt-0.5">
-              ~{Math.max(1, Math.round(parseFloat(currentDistanceKm) * 3))} <span className="text-[0.6rem] text-orange-300">mins</span>
+            <p className="text-[0.55rem] font-black tracking-widest text-gray-400 uppercase">
+              Est. ETA
+            </p>
+            <p className="mt-0.5 text-sm font-black text-orange-400">
+              ~{Math.max(1, Math.round(parseFloat(currentDistanceKm) * 3))}{' '}
+              <span className="text-[0.6rem] text-orange-300">mins</span>
             </p>
           </div>
           <div>
-            <p className="text-[0.55rem] font-black text-gray-400 uppercase tracking-widest">Sync</p>
-            <p className="text-sm font-black text-green-400 mt-0.5">
-              {lastUpdate ? lastUpdate.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }) : 'Live'}
+            <p className="text-[0.55rem] font-black tracking-widest text-gray-400 uppercase">
+              Sync
+            </p>
+            <p className="mt-0.5 text-sm font-black text-green-400">
+              {lastUpdate
+                ? lastUpdate.toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })
+                : 'Live'}
             </p>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/30 rounded-xl p-3 text-red-300 text-xs">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <p className="text-[0.65rem] font-medium leading-relaxed">{error}</p>
+        <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-950/40 p-3 text-xs text-red-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <p className="text-[0.65rem] leading-relaxed font-medium">{error}</p>
         </div>
       )}
     </div>
