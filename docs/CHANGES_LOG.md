@@ -2,7 +2,30 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Geo-Fencing Freshness Guard, 10 KM Delivery Radius & City Unavailability Screen
+
+- **Date & Time:** 2026-10-17 02:09 IST
+- **Objective:** Implement hyper-local delivery radius enforcement so Rasan only serves nearby customers (students & working professionals within 10 km), ensuring food arrives piping hot. Show a "not in your city yet" screen for out-of-city visitors.
+- **Implementation Plan:**
+  1. Add `MAX_DELIVERY_RADIUS_KM = 10` constant and `haversineDistanceKm()` utility to `lib/utils/constants.ts`.
+  2. Add client-side freshness guard in `checkout-form.tsx` that fetches vendor kitchen GPS and blocks checkout if distance > 10 km.
+  3. Add server-side freshness guard in `app/api/orders/route.ts` (protects against API bypass).
+  4. Create `app/api/vendors/[id]/location/route.ts` lightweight endpoint returning only vendor lat/lng for distance calculation.
+  5. Create `components/location/city-unavailable.tsx` — branded screen for out-of-city visitors with waitlist email signup.
+- **Files Modified / Created:**
+  - `lib/utils/constants.ts` - Added `MAX_DELIVERY_RADIUS_KM`, `haversineDistanceKm()`.
+  - `components/checkout/checkout-form.tsx` - Client-side 10 km guard + freshness banner in UI.
+  - `app/api/orders/route.ts` - Server-side distance validation with `DELIVERY_TOO_FAR` error code.
+  - `app/api/vendors/[id]/location/route.ts` - New micro-endpoint returning vendor kitchen lat/lng.
+  - `components/location/city-unavailable.tsx` - New "Coming soon to your city" component with waitlist.
+  - `docs/CHANGES_LOG.md` - Updated with this entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm run build` — ✅ Exit code 0, compiled cleanly. TypeScript passed 0 errors.
+
+---
+
 ### [2026-10-15] - Payment Webhook Idempotency, Transactional SMS/WhatsApp Gateway & Production Runbook
+
 
 - **Date & Time:** 2026-10-15 00:58 IST
 - **Objective:** Complete Pillar 2 (Razorpay webhook idempotency, duplicate retry protection, payment.failed handling), Pillar 4 (pluggable transactional SMS & WhatsApp messaging service with zero-cost mock fallback), and Pillar 5 (production launch pre-flight runbook for Migration 005 and custom domain mapping).

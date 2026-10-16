@@ -13,6 +13,31 @@ export const FREE_DELIVERY_RADIUS_KM = 7; // Free Delivery Under 7 KM
 export const BASE_DELIVERY_FEE_ABOVE_7KM = 25; // Base fee above 7 KM
 export const PER_KM_DELIVERY_FEE_ABOVE_7KM = 10; // Extra charge per KM above 7 KM
 
+// 🌡️ Food Freshness Guard — maximum allowed delivery radius
+// Beyond 10 KM, homemade food (chapati, dal, sabzi) goes cold during transit on Pune roads.
+// Both the checkout UI and the orders API enforce this hard limit.
+export const MAX_DELIVERY_RADIUS_KM = 10;
+
+/**
+ * Haversine formula: calculates straight-line distance (KM) between two GPS coordinates.
+ * Used for freshness-guard checks on both client and server.
+ */
+export function haversineDistanceKm(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /**
  * Calculates delivery fee based on distance:
  * - Free (₹0) under 7 KM
