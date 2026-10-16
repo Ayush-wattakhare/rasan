@@ -2,6 +2,25 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Mobile Navigation Drawer Portal Architecture & Close Defect Fix
+
+- **Date & Time:** 2026-10-17 04:05 IST
+- **Objective:** Fix the mobile navigation drawer uncloseable bug and BottomBar z-index conflict. When nested inside the sticky header with `backdrop-filter`, the drawer was trapped in a local stacking context and CSS containing block, rendering behind the floating BottomBar and warping backdrop touch events.
+- **Implementation Plan:**
+  1. Elevate Radix UI `SheetOverlay` and `SheetContent` to `z-[100]` in `components/ui/sheet.tsx`.
+  2. Refactor `components/layout/mobile-nav.tsx` to use Radix UI `Sheet`, `SheetTrigger`, `SheetContent`, and `SheetClose`, mounting directly to `document.body` via `SheetPortal`.
+  3. Wrap the mobile hamburger button in `SheetTrigger asChild` for native two-way toggle behavior.
+  4. Wrap the `X` button and all route links in `SheetClose asChild` for automatic drawer dismissal on selection.
+  5. Teleport drawer outside header stacking context to eliminate the `BottomBar` z-index overlap.
+- **Files Modified / Created:**
+  - `components/ui/sheet.tsx` - Elevated sheet overlay and content to `z-[100]`.
+  - `components/layout/mobile-nav.tsx` - Re-architected with Radix UI Sheet, SheetPortal, SheetClose, and accessible SheetTitle.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
 ### [2026-10-17] - Mobile Viewport, iOS Auto-Zoom Defenses & Sticky CTA Collision Remediation
 
 - **Date & Time:** 2026-10-17 03:35 IST
