@@ -175,8 +175,8 @@ export function OrderTracker({
  
         {/* -- Delivery Handover OTP PIN ------------------------------------------- */}
         {!isDelivered && !isCancelled && (
-          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white rounded-[2rem] p-6 shadow-xl relative overflow-hidden">
-            <div className="flex items-center justify-between gap-4 relative z-10">
+          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white rounded-[2rem] p-5 sm:p-6 shadow-xl relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-orange-200" />
@@ -187,7 +187,7 @@ export function OrderTracker({
                 <h4 className="text-sm font-black uppercase tracking-tight text-white">Share with Rider at Doorstep</h4>
                 <p className="text-[0.65rem] text-orange-100/90 font-medium">Your rider will enter this 4-digit PIN to verify meal handover.</p>
               </div>
-              <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl px-5 py-3 text-center shrink-0 shadow-inner">
+              <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl px-5 py-3 text-center self-start sm:self-auto shrink-0 shadow-inner">
                 <p className="text-[0.55rem] font-black uppercase tracking-widest text-orange-100">DELIVERY OTP</p>
                 <p className="text-3xl font-black tracking-widest font-mono text-white mt-0.5">{getDeliveryOtp(order)}</p>
               </div>

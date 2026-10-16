@@ -463,40 +463,40 @@ export default function DeliveryDashboardMain({
         {/* ── METRIC TILES ── */}
         <div className="container mx-auto px-4 -mt-8 relative z-20">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
-            <Card className="border-none shadow-xl bg-white rounded-3xl p-6 relative overflow-hidden group">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Today's Payout</div>
-                  <div className="text-3xl font-black text-gray-900 tracking-tighter italic">₹{todayEarnings}</div>
+            <Card className="border-none shadow-xl bg-white rounded-3xl p-4 sm:p-6 relative overflow-hidden group">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                <div className="min-w-0">
+                  <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Today&apos;s Payout</div>
+                  <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tighter italic truncate">₹{todayEarnings}</div>
                 </div>
                 <Button
                   size="sm"
                   onClick={() => setIsRedeemOpen(true)}
-                  className="bg-green-50 hover:bg-green-100 text-green-700 font-black text-[0.6rem] uppercase tracking-wider rounded-xl h-8 px-2.5 border border-green-200"
+                  className="bg-green-50 hover:bg-green-100 text-green-700 font-black text-[0.6rem] uppercase tracking-wider rounded-xl h-7 sm:h-8 px-2.5 border border-green-200 self-start shrink-0"
                 >
                   ⚡ Cashout
                 </Button>
               </div>
-              <div className="text-[0.6rem] font-bold text-green-600 uppercase mt-2 flex items-center gap-1">
-                <span>Instant UPI & Bank Transfer</span>
+              <div className="text-[0.55rem] sm:text-[0.6rem] font-bold text-green-600 uppercase mt-2 flex items-center gap-1">
+                <span>Instant UPI &amp; Bank Transfer</span>
               </div>
             </Card>
 
-            <Card className="border-none shadow-xl bg-white rounded-3xl p-6">
+            <Card className="border-none shadow-xl bg-white rounded-3xl p-4 sm:p-6">
               <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Active Missions</div>
-              <div className="text-3xl font-black text-orange-600 tracking-tighter italic">{activeDeliveries.length}</div>
+              <div className="text-2xl sm:text-3xl font-black text-orange-600 tracking-tighter italic">{activeDeliveries.length}</div>
               <div className="text-[0.6rem] font-bold text-gray-400 uppercase mt-1">In Motion</div>
             </Card>
 
-            <Card className="border-none shadow-xl bg-white rounded-3xl p-6">
+            <Card className="border-none shadow-xl bg-white rounded-3xl p-4 sm:p-6">
               <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Trust Rating</div>
-              <div className="text-3xl font-black text-gray-900 tracking-tighter italic">★ {deliveryPartner.rating || 4.9}</div>
+              <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tighter italic truncate">★ {deliveryPartner.rating || 4.9}</div>
               <div className="text-[0.6rem] font-bold text-gray-400 uppercase mt-1">Top Tier Rider</div>
             </Card>
 
-            <Card className="border-none shadow-xl bg-white rounded-3xl p-6">
+            <Card className="border-none shadow-xl bg-white rounded-3xl p-4 sm:p-6">
               <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Total Deliveries</div>
-              <div className="text-3xl font-black text-gray-900 tracking-tighter italic">{deliveryPartner.total_deliveries || 48}</div>
+              <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tighter italic">{deliveryPartner.total_deliveries || 48}</div>
               <div className="text-[0.6rem] font-bold text-gray-400 uppercase mt-1">Completed Sorties</div>
             </Card>
           </div>

@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { X, Home, Utensils, Store, Package, Repeat, User, LogOut, LayoutDashboard, Menu } from 'lucide-react';
+import { 
+  X, Home, Utensils, Store, Package, Repeat, User, LogOut, 
+  LayoutDashboard, Menu, Landmark, Megaphone, Navigation, Zap, 
+  Radio, Truck, IndianRupee, LifeBuoy 
+} from 'lucide-react';
 
 interface MobileNavProps {
   user?: {
@@ -27,44 +31,69 @@ export default function MobileNav({ user }: MobileNavProps) {
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  const isActive = (path: string) => pathname === path || pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (
+      path === '/dashboard' ||
+      path === '/vendor-dashboard' ||
+      path === '/delivery-dashboard' ||
+      path === '/admin-dashboard'
+    ) {
+      return pathname === path;
+    }
+    return pathname === path || (path !== '/' && pathname.startsWith(path));
+  };
 
   const getNavLinks = () => {
-    const commonLinks = [
-      { href: '/meals', label: 'Menu', icon: Utensils },
-      { href: '/vendors', label: 'Vendors', icon: Store },
-    ];
-
     if (!user) {
       return [
-        ...commonLinks,
+        { href: '/meals', label: 'Explore Meals', icon: Utensils },
+        { href: '/vendors', label: 'Home Kitchens', icon: Store },
         { href: '/login', label: 'Login', icon: User },
         { href: '/register', label: 'Join Now', icon: LayoutDashboard },
       ];
     }
 
-    const roleLinks: Record<string, { href: string; label: string; icon: any }[]> = {
-      customer: [
-        { href: '/dashboard', label: 'Dashboard', icon: Home },
-        { href: '/orders', label: 'Orders', icon: Package },
-        { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },
-        { href: '/profile', label: 'Profile', icon: User },
-      ],
-      vendor: [
-        { href: '/vendor-dashboard', label: 'Dashboard', icon: Home },
-        { href: '/menu-management', label: 'Menu', icon: Utensils },
-        { href: '/vendor-orders', label: 'Orders', icon: Package },
-      ],
-      delivery: [
-        { href: '/delivery-dashboard', label: 'Dashboard', icon: Home },
-        { href: '/available-orders', label: 'Available Orders', icon: Package },
-      ],
-      admin: [
-        { href: '/admin-dashboard', label: 'Dashboard', icon: Home },
-      ],
-    };
+    if (user.role === 'vendor') {
+      return [
+        { href: '/vendor-dashboard', label: 'Kitchen Hub', icon: Home },
+        { href: '/vendor-orders', label: 'Live Orders', icon: Package },
+        { href: '/menu-management', label: 'Menu Management', icon: Utensils },
+        { href: '/vendor-profile', label: 'Kitchen GPS & Profile', icon: Store },
+        { href: '/payouts', label: 'Earnings & Payouts', icon: Landmark },
+        { href: '/subscriber-broadcast', label: 'Customer Broadcast', icon: Megaphone },
+      ];
+    }
 
-    return [...commonLinks, ...(roleLinks[user.role] || [])];
+    if (user.role === 'delivery') {
+      return [
+        { href: '/delivery-dashboard', label: 'Pilot Radar', icon: Home },
+        { href: '/active-deliveries', label: 'Active Delivery', icon: Navigation },
+        { href: '/available-orders', label: 'Available Orders', icon: Package },
+        { href: '/earnings', label: 'Earnings & Cashout', icon: Zap },
+      ];
+    }
+
+    if (user.role === 'admin') {
+      return [
+        { href: '/admin-dashboard', label: 'Command Center', icon: LayoutDashboard },
+        { href: '/live-ops', label: 'Live Operations', icon: Radio },
+        { href: '/delivery-management', label: 'Delivery Riders', icon: Truck },
+        { href: '/vendor-management', label: 'Vendor Kitchens', icon: Store },
+        { href: '/settlements', label: 'Settlements', icon: Landmark },
+        { href: '/refunds-ledger', label: 'Refunds Ledger', icon: IndianRupee },
+        { href: '/support-management', label: 'Support Tickets', icon: LifeBuoy },
+      ];
+    }
+
+    // Default: Customer
+    return [
+      { href: '/dashboard', label: 'Home Dashboard', icon: Home },
+      { href: '/meals', label: 'Explore Meals', icon: Utensils },
+      { href: '/vendors', label: 'Home Kitchens', icon: Store },
+      { href: '/orders', label: 'Order History', icon: Package },
+      { href: '/subscriptions', label: 'Tiffin Plans', icon: Repeat },
+      { href: '/profile', label: 'Profile & Addresses', icon: User },
+    ];
   };
 
   return (

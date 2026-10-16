@@ -2,6 +2,32 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Multi-Role Mobile UX Audit & Cross-Persona Layout Fixes
+
+- **Date & Time:** 2026-10-17 03:15 IST
+- **Objective:** Fix multi-role mobile layout bugs across Vendor, Delivery Rider, Admin, and Customer roles. Isolate role navigation drawers so worker accounts do not get consumer links, implement role-dedicated mobile bottom navigation docks, eliminate flexbox left-scroll clipping on mobile admin docks, and resolve 375px screen metric card and action button wrapping bugs.
+- **Implementation Plan:**
+  1. Audit role navigation links in `components/layout/mobile-nav.tsx` and isolate by persona (`vendor`, `delivery`, `admin`, `customer`).
+  2. Implement dedicated bottom navigation docks in `components/layout/bottom-bar.tsx` for Vendors (`Hub`, `Orders`, `Menu`, `Payouts`, `Kitchen`) and Riders (`Radar`, `Active`, `Pool`, `Cashout`), delegating Admin to `AdminBottomNav`.
+  3. Fix left-scroll clipping on `components/layout/admin-bottom-nav.tsx` by replacing centering overflow flex with snap-scroll container (`snap-x snap-mandatory scrollbar-none px-3`).
+  4. Fix metric card overlap in `components/vendor/stats-overview.tsx` on 375px screens by scaling padding and typography (`text-2xl sm:text-3xl`).
+  5. Prevent action button overflow in `app/(delivery)/delivery-dashboard/delivery-dashboard-main.tsx` by converting payout/cashout row to responsive column-to-row stack.
+  6. Prevent CTA button truncation in `app/(vendor)/vendor-dashboard/page.tsx` on narrow mobile screens.
+  7. Prevent PIN security instruction squeeze in `components/orders/order-tracker.tsx` on 360–375px viewports.
+- **Files Modified / Created:**
+  - `components/layout/mobile-nav.tsx` - Role-isolated navigation drawer with dedicated links for Vendor, Rider, Admin, and Customer.
+  - `components/layout/bottom-bar.tsx` - Role-aware bottom docks for Vendor and Rider, avoiding customer dock bleed.
+  - `components/layout/admin-bottom-nav.tsx` - Resolved flexbox left-side scroll clipping via natural snap-scroll alignment.
+  - `components/vendor/stats-overview.tsx` - Responsive metric typography and padding for 375px mobile screens.
+  - `app/(delivery)/delivery-dashboard/delivery-dashboard-main.tsx` - Responsive payout header and cashout CTA button stack.
+  - `app/(vendor)/vendor-dashboard/page.tsx` - Full-width responsive action button container on mobile.
+  - `components/orders/order-tracker.tsx` - Responsive handover security PIN container to prevent text squeeze.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
 ### [2026-10-17] - Vendor Kitchen GPS Calibration, Transactional SMS Dispatch Wiring & City Unavailability Screen
 
 - **Date & Time:** 2026-10-17 02:55 IST
