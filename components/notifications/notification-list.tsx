@@ -4,35 +4,44 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import NotificationItem from './notification-item';
 import { Button } from '@/components/ui/button';
-import { Bell, CheckCheck, Inbox, Loader2 } from 'lucide-react';
+import { CheckCheck, Inbox } from 'lucide-react';
 import type { Notification } from '@/lib/supabase/types';
 
 interface NotificationListProps {
   userId: string;
+  initialNotifications?: Notification[];
 }
 
-export default function NotificationList({ userId }: NotificationListProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function NotificationList({ userId, initialNotifications }: NotificationListProps) {
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications ?? []);
+  const [loading, setLoading] = useState(initialNotifications === undefined);
   const [filter, setFilter] = useState<'all' | 'order' | 'subscription' | 'system'>('all');
 
   useEffect(() => {
     const supabase = createClient();
 
-    const fetchNotifications = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+    if (!initialNotifications) {
+      const fetchNotifications = async () => {
+        try {
+          const { data } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50);
 
-      if (data) {
-        setNotifications(data);
-      }
-      setLoading(false);
-    };
+          if (data) {
+            setNotifications(data);
+          }
+        } catch (err) {
+          console.warn('Error fetching notifications:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-    fetchNotifications();
+      fetchNotifications();
+    }
 
     // Subscribe to real-time updates
     const channel = supabase
@@ -91,9 +100,19 @@ export default function NotificationList({ userId }: NotificationListProps) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
-        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Loading Notifications...</p>
+      <div className="space-y-3 py-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="animate-pulse flex items-start gap-4 p-4 rounded-2xl bg-gray-50/80 border border-gray-100"
+          >
+            <div className="w-10 h-10 rounded-2xl bg-gray-200/80 shrink-0" />
+            <div className="flex-1 space-y-2 py-1">
+              <div className="h-4 bg-gray-200/80 rounded-md w-1/3" />
+              <div className="h-3 bg-gray-200/60 rounded-md w-3/4" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
