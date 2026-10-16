@@ -2,6 +2,26 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Notification Page Loading Optimization: SSR Pre-Fetching & Realtime Hydration
+
+- **Date & Time:** 2026-10-17 04:45 IST
+- **Objective:** Eliminate the high-latency "LOADING NOTIFICATIONS..." spinner on `/notifications`. Transition from an unbuffered client-side data waterfall to instant Server-Side Pre-fetching (SSR) with background realtime hydration and bounded queries.
+- **Implementation Plan:**
+  1. Audit `app/notifications/page.tsx` and `components/notifications/notification-list.tsx` to isolate the root cause of the client-side data waterfall and unconstrained database queries.
+  2. In `app/notifications/page.tsx`, execute an authenticated Supabase query on the server to pre-fetch the latest 50 notifications, rendering full notification cards directly into the initial HTML payload.
+  3. In `components/notifications/notification-list.tsx`, accept `initialNotifications?: Notification[]`, initialize state with server data, and set initial loading to `false` when data is provided.
+  4. Bound fallback client queries to `.limit(50)` and wrap in resilient `try / catch / finally` blocks.
+  5. Replace the blank card spinner with modern skeleton card placeholders for graceful fallback states.
+  6. Maintain the real-time Supabase WebSocket subscription for seamless live order and delivery updates.
+- **Files Modified / Created:**
+  - `app/notifications/page.tsx` - Added server-side notification pre-fetching with `.limit(50)` and passed `initialNotifications` to the client list.
+  - `components/notifications/notification-list.tsx` - Added `initialNotifications` SSR prop support, 0ms initial render state, bounded queries, and skeleton fallback UI.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
 ### [2026-10-17] - Mobile Navigation Drawer Portal Architecture & Close Defect Fix
 
 - **Date & Time:** 2026-10-17 04:05 IST

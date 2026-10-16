@@ -20,6 +20,13 @@ export default async function NotificationsPage() {
     redirect('/login?redirectTo=/notifications');
   }
 
+  const { data: initialNotifications } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
   return (
     <div className="min-h-screen bg-[#FDFCFB] py-10 md:py-16">
       <div className="container mx-auto px-4 max-w-3xl">
@@ -54,7 +61,7 @@ export default async function NotificationsPage() {
 
         {/* Notifications Card */}
         <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 md:p-8 shadow-xl">
-          <NotificationList userId={user.id} />
+          <NotificationList userId={user.id} initialNotifications={initialNotifications ?? []} />
         </div>
       </div>
     </div>
