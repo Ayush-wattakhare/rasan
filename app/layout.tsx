@@ -80,7 +80,10 @@ export default async function RootLayout({
             <div className="flex min-h-screen flex-col relative z-0">
               <Header user={profile} />
               <main className="flex-1 pb-24 md:pb-32">{children}</main>
-              <Footer />
+              {/* Hide footer on mobile for logged-in users — BottomBar serves as nav */}
+              <div className={profile ? 'hidden md:block' : ''}>
+                <Footer />
+              </div>
               {profile && <BottomBar userRole={profile.role} />}
               {!profile && <FloatingGetStarted />}
 

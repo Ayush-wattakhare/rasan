@@ -33,8 +33,8 @@ export default function BottomBar({ userRole }: BottomBarProps) {
   const navItems = customerNav;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 px-6 pb-8 pointer-events-none flex justify-center">
-      <nav className="bg-[#1A1A1A]/85 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.4)] px-3 py-2 flex items-center gap-1 pointer-events-auto ring-1 ring-white/5 transition-all duration-500 hover:bg-[#1A1A1A]/90 hover:shadow-[0_30px_70px_-12px_rgba(0,0,0,0.5)]">
+    <div className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-5 pointer-events-none flex justify-center">
+      <nav className="bg-[#1A1A1A]/85 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.4)] px-2 py-2 flex items-center gap-0.5 pointer-events-auto ring-1 ring-white/5 transition-all duration-500 hover:bg-[#1A1A1A]/90 hover:shadow-[0_30px_70px_-12px_rgba(0,0,0,0.5)]">
         {navItems.map((item: any) => {
           const Icon = item.icon;
           const active = isActive(item.href);
@@ -43,7 +43,7 @@ export default function BottomBar({ userRole }: BottomBarProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`relative group flex flex-col items-center justify-center min-w-[5rem] py-2.5 rounded-3xl transition-all duration-500 ${
+              className={`relative group flex flex-col items-center justify-center min-w-[3.8rem] sm:min-w-[5rem] py-2 sm:py-2.5 rounded-3xl transition-all duration-500 ${
                 active ? 'text-orange-500' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
