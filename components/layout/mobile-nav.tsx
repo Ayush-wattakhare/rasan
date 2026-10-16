@@ -116,6 +116,7 @@ export default function MobileNav({ user }: MobileNavProps) {
       {/* Bottom Sheet rendered directly in document.body via Portal */}
       <SheetContent
         side="bottom"
+        hideDefaultClose
         className="z-[100] rounded-t-[2.5rem] bg-white max-h-[85vh] p-0 overflow-y-auto pb-safe border-none shadow-2xl focus:outline-none"
       >
         <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>

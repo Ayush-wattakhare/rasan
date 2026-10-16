@@ -42,6 +42,11 @@ export async function updateSession(request: NextRequest) {
   // Fast-path: Skip auth checks on public pages & static assets
   const isPublicPage = 
     pathname === '/' || 
+    pathname === '/meals' ||
+    pathname.startsWith('/meals/') ||
+    pathname === '/cart' ||
+    pathname === '/vendors' ||
+    pathname.startsWith('/vendors/') ||
     pathname.startsWith('/about') || 
     pathname.startsWith('/contact') || 
     pathname.startsWith('/faq') ||
