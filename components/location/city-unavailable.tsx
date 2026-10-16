@@ -6,6 +6,8 @@ import { useState } from 'react';
 interface CityUnavailableProps {
   /** City/area name detected from user GPS reverse-geocode */
   cityName?: string;
+  /** Optional callback to allow user to preview Pune kitchens */
+  onBrowsePreview?: () => void;
 }
 
 /**
@@ -13,7 +15,7 @@ interface CityUnavailableProps {
  * the service radius. Encourages them to sign up for launch notifications
  * and browse the Pune menus in read-only mode.
  */
-export function CityUnavailable({ cityName }: CityUnavailableProps) {
+export function CityUnavailable({ cityName, onBrowsePreview }: CityUnavailableProps) {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -47,7 +49,7 @@ export function CityUnavailable({ cityName }: CityUnavailableProps) {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">
               {cityName ?? 'your area'}
             </span>{' '}
-            yet ??
+            yet 🚚
           </h1>
           <p className="text-sm text-gray-500 max-w-sm mx-auto leading-relaxed font-medium">
             Rasan is currently delivering <strong>hyper-local ghar ka khana</strong> in Pune.
@@ -77,7 +79,7 @@ export function CityUnavailable({ cityName }: CityUnavailableProps) {
           </form>
         ) : (
           <div className="inline-flex items-center gap-2 px-5 py-3 bg-green-50 border border-green-200 text-green-800 rounded-2xl text-sm font-bold">
-            ? You&apos;re on the list! We&apos;ll notify you when Rasan reaches {cityName ?? 'your city'}.
+            🎉 You&apos;re on the list! We&apos;ll notify you when Rasan reaches {cityName ?? 'your city'}.
           </div>
         )}
 
@@ -86,12 +88,21 @@ export function CityUnavailable({ cityName }: CityUnavailableProps) {
           <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
             Meanwhile, explore our Pune kitchens
           </p>
-          <a
-            href="/vendors"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors"
-          >
-            ??? Browse Pune Menus (Read-only)
-          </a>
+          {onBrowsePreview ? (
+            <button
+              onClick={onBrowsePreview}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              🍱 Browse Pune Menus (Preview Mode)
+            </button>
+          ) : (
+            <a
+              href="/vendors"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors"
+            >
+              🍱 Browse Pune Menus (Read-only)
+            </a>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,57 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Vendor Kitchen GPS Calibration, Transactional SMS Dispatch Wiring & City Unavailability Screen
+
+- **Date & Time:** 2026-10-17 02:55 IST
+- **Objective:** Fix the hardcoded Pune center kitchen coordinates bug by allowing home chefs to calibrate their exact kitchen location via interactive map/GPS. Wire transactional SMS/WhatsApp dispatches into order lifecycle transitions. Show the out-of-city screen on the homepage when visiting from outside Pune/PCMC. Remove dead component code.
+- **Implementation Plan:**
+  1. Create `app/api/vendor/profile/route.ts` API endpoint supporting PostGIS `POINT(lng lat)` updates for vendor kitchens.
+  2. Update `components/vendor/vendor-profile-form.tsx` with dedicated Kitchen GPS card, device GPS detection, and `LocationSelectorModal` map picker.
+  3. Update `components/partner/vendor-application-modal.tsx` and `app/api/become-vendor/route.ts` to accept kitchen GPS coordinates during new vendor onboarding.
+  4. Wire `notifyKitchenCooking`, `notifyOutForDelivery`, and `notifyOrderDelivered` in `lib/orders/transition.ts` on status transitions.
+  5. Wire `CityUnavailable` into `components/home/hero.tsx` when user's location is > 35 km away from Pune, with preview mode option.
+  6. Delete dead/orphaned `components/layout/mobile-bottom-nav.tsx` file.
+- **Files Modified / Created:**
+  - `app/api/vendor/profile/route.ts` - New API route handling vendor profile updates with PostGIS kitchen coordinates.
+  - `components/vendor/vendor-profile-form.tsx` - Added Kitchen GPS card, coordinates parsing, map selector, and device GPS detection.
+  - `components/partner/vendor-application-modal.tsx` - Added map location pin and GPS coordinates to vendor application flow.
+  - `app/api/become-vendor/route.ts` - Accepted lat/lng and stored PostGIS POINT instead of default.
+  - `lib/orders/transition.ts` - Wired asynchronous SMS/WhatsApp alerts for kitchen cooking, out for delivery, and delivered.
+  - `components/location/city-unavailable.tsx` - Fixed emoji typos, added preview mode callback support.
+  - `components/home/hero.tsx` - Wired `CityUnavailable` detection for non-Pune visitors with preview mode toggle.
+  - `components/layout/mobile-bottom-nav.tsx` - Deleted dead orphaned file.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm run build` passed with exit code 0 (99/99 routes generated). `npm test` passed 10/10 test suites (117/117 tests passing).
+
+---
+
+### [2026-10-17] - Phase 1 + 2 Mobile UX Overhaul (10 Mobile Fixes)
+
+- **Date & Time:** 2026-10-17 02:30 IST
+- **Objective:** Modernize and optimize the mobile viewport UX across 375px screens: fix typography overflow, compact search bar, horizontal scrolling chips/tiffin plans, replace center dialog with native bottom sheet, and add sticky mobile cart checkout bar.
+- **Implementation Plan:**
+  1. Shrink hero H1 to `text-[2.4rem] sm:text-5xl` and reduce padding to `pt-12 pb-10` on mobile.
+  2. Make search bar stack cleanly on mobile; convert category chips to swipeable horizontal snap carousel.
+  3. Fix bottom bar item min-width to `3.8rem` so 5 navigation items fit cleanly on 375px screens.
+  4. Rewrite `components/layout/mobile-nav.tsx` as a sleek sliding bottom sheet with backdrop.
+  5. Convert tiffin subscription plan cards to horizontal snap carousel on mobile screens.
+  6. Add sticky mobile checkout bar to `app/cart/page.tsx` showing total and checkout button.
+  7. Hide footer on mobile for logged-in users who have the bottom navigation bar.
+- **Files Modified / Created:**
+  - `components/home/hero.tsx` - H1 sizing, search bar layout, compact padding, snap chips.
+  - `components/layout/bottom-bar.tsx` - Reduced min-width and padding for 375px screens.
+  - `components/layout/mobile-nav.tsx` - Native sliding bottom sheet drawer navigation.
+  - `components/home/tiffin-subscription.tsx` - Swipeable snap carousel on mobile.
+  - `app/cart/page.tsx` - Sticky mobile checkout bar.
+  - `app/layout.tsx` - Mobile footer visibility condition.
+  - `app/globals.css` - Added `scrollbar-none` utility class.
+- **Status:** Completed (Committed in `46ec947`)
+- **Verification / Testing:** `npm run build` passed with exit code 0.
+
+---
+
 ### [2026-10-17] - Geo-Fencing Freshness Guard, 10 KM Delivery Radius & City Unavailability Screen
 
 - **Date & Time:** 2026-10-17 02:09 IST

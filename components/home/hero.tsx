@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, ChevronDown } from 'lucide-react';
+import { Search, MapPin, ChevronDown, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { LocationSelectorModal } from '@/components/location/location-selector-modal';
+import { CityUnavailable } from '@/components/location/city-unavailable';
+import { haversineDistanceKm } from '@/lib/utils/constants';
 import {
   getStoredDeliveryLocation,
   RASAN_LOCATION_EVENT,
@@ -17,6 +19,20 @@ export default function Hero() {
   const [searchQuery, setSearchQuery] = useState('');
   const [location, setLocation] = useState('Pimpri');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isOutOfServiceArea, setIsOutOfServiceArea] = useState(false);
+  const [outOfCityName, setOutOfCityName] = useState('');
+  const [previewMode, setPreviewMode] = useState(false);
+
+  const checkServiceArea = (loc: AccurateLocationResult | null) => {
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
+    const distanceToPune = haversineDistanceKm(loc.lat, loc.lng, 18.5204, 73.8567);
+    if (distanceToPune > 35) {
+      setIsOutOfServiceArea(true);
+      setOutOfCityName(loc.details.city || loc.details.locality || 'your area');
+    } else {
+      setIsOutOfServiceArea(false);
+    }
+  };
 
   // Initialize and synchronize location from storage or global events
   useEffect(() => {
@@ -26,11 +42,14 @@ export default function Hero() {
     } else {
       setLocation('Pimpri');
     }
+    checkServiceArea(stored);
 
     const handleLocationChange = (e: CustomEvent<AccurateLocationResult>) => {
       if (e.detail?.details?.locality) {
         setLocation(e.detail.details.locality);
       }
+      checkServiceArea(e.detail);
+      setPreviewMode(false);
     };
 
     window.addEventListener(RASAN_LOCATION_EVENT as any, handleLocationChange as any);
@@ -55,6 +74,8 @@ export default function Hero() {
           if (loc.details.locality) {
             setLocation(loc.details.locality);
           }
+          checkServiceArea(loc);
+          setPreviewMode(false);
         }}
       />
       <section className="relative bg-[#1A1A1A] pt-12 pb-10 md:py-32 overflow-hidden isolate">
@@ -133,54 +154,77 @@ export default function Hero() {
               </form>
             </div>
 
-          {/* Quick Category Chips — horizontal scroll on mobile */}
-          <div className="w-full flex overflow-x-auto gap-3 pb-1 scrollbar-none snap-x snap-mandatory justify-start sm:justify-center sm:flex-wrap">
-            {[
-              { id: 'tiffin', label: 'Daily Tiffins', icon: '🍱' },
-              { id: 'thali', label: 'Royal Thalis', icon: '🍛' },
-              { id: 'subscriptions', label: 'Weekly Plans', icon: '📅' },
-              { id: 'vendors', label: 'Local Chefs', icon: '👩‍🍳' }
-            ].map((item) => (
-              <Link
-                key={item.id}
-                href={item.id === 'vendors' ? '/vendors' : `/meals?category=${item.id}`}
-                className="snap-start shrink-0 bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-white font-bold hover:bg-white/10 hover:border-orange-500/50 transition-all flex items-center gap-2 min-h-[48px]"
-              >
-                <span>{item.icon}</span>
-                <span className="text-xs uppercase tracking-[0.15em] whitespace-nowrap">{item.label}</span>
-              </Link>
-            ))}
-          </div>
+            {/* Quick Category Chips — horizontal scroll on mobile */}
+            <div className="w-full flex overflow-x-auto gap-3 pb-1 scrollbar-none snap-x snap-mandatory justify-start sm:justify-center sm:flex-wrap">
+              {[
+                { id: 'tiffin', label: 'Daily Tiffins', icon: '🍱' },
+                { id: 'thali', label: 'Royal Thalis', icon: '🍛' },
+                { id: 'subscriptions', label: 'Weekly Plans', icon: '📅' },
+                { id: 'vendors', label: 'Local Chefs', icon: '👩‍🍳' }
+              ].map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.id === 'vendors' ? '/vendors' : `/meals?category=${item.id}`}
+                  className="snap-start shrink-0 bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-white font-bold hover:bg-white/10 hover:border-orange-500/50 transition-all flex items-center gap-2 min-h-[48px]"
+                >
+                  <span>{item.icon}</span>
+                  <span className="text-xs uppercase tracking-[0.15em] whitespace-nowrap">{item.label}</span>
+                </Link>
+              ))}
+            </div>
 
-          {/* Real-time Trust indicators */}
-          <div className="grid grid-cols-3 gap-4 sm:gap-12 pt-8 border-t border-white/5 w-full max-w-2xl">
-            <div className="text-center group">
-              <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">500+</div>
-              <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Home Kitchens</div>
-            </div>
-            <div className="text-center group">
-              <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">50K+</div>
-              <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Meals Served</div>
-            </div>
-            <div className="text-center group">
-              <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">4.9/5</div>
-              <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Avg Rating</div>
+            {/* Real-time Trust indicators */}
+            <div className="grid grid-cols-3 gap-4 sm:gap-12 pt-8 border-t border-white/5 w-full max-w-2xl">
+              <div className="text-center group">
+                <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">500+</div>
+                <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Home Kitchens</div>
+              </div>
+              <div className="text-center group">
+                <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">50K+</div>
+                <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Meals Served</div>
+              </div>
+              <div className="text-center group">
+                <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">4.9/5</div>
+                <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Avg Rating</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Social Proof Overlay */}
-      <div className="absolute right-10 bottom-10 hidden xl:flex flex-col gap-3">
-         <div className="bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 max-w-[200px] animate-bounce-slow">
+        {/* Social Proof Overlay */}
+        <div className="absolute right-10 bottom-10 hidden xl:flex flex-col gap-3">
+          <div className="bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 max-w-[200px] animate-bounce-slow">
             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-xl">👩</div>
             <div className="flex flex-col">
-               <span className="text-[0.6rem] font-black text-gray-400 uppercase tracking-tight">Recent Order</span>
-               <span className="text-xs font-bold text-gray-900 leading-none">Priya from Mumbai</span>
+              <span className="text-[0.6rem] font-black text-gray-400 uppercase tracking-tight">Recent Order</span>
+              <span className="text-xs font-bold text-gray-900 leading-none">Priya from Hinjawadi</span>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Out of City Screen or Preview Notification */}
+      {isOutOfServiceArea && !previewMode ? (
+        <section className="bg-white border-b border-gray-100">
+          <CityUnavailable
+            cityName={outOfCityName}
+            onBrowsePreview={() => setPreviewMode(true)}
+          />
+        </section>
+      ) : isOutOfServiceArea && previewMode ? (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-center text-xs font-bold text-amber-900 flex items-center justify-center gap-2">
+          <Eye className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            You are browsing Pune &amp; PCMC kitchens from <strong>{outOfCityName}</strong> in Preview Mode. Fresh food delivery is active within 10 km in Pune.
+          </span>
+          <button
+            onClick={() => setIsLocationModalOpen(true)}
+            className="underline ml-2 text-amber-800 hover:text-amber-950 font-black cursor-pointer"
+          >
+            Change Pin
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }
