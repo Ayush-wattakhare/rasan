@@ -2,6 +2,11 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { canTransition, normalizeOrderStatus, type OrderActor } from '@/lib/utils/order-transitions';
 import { verifyHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { rateLimit } from '@/lib/utils/rate-limit';
+import {
+  notifyKitchenCooking,
+  notifyOutForDelivery,
+  notifyOrderDelivered,
+} from '@/lib/notifications/transactional';
 import type { OrderStatus, UserRole } from '@/types';
 
 /** Minimum a rider earns per delivery when the order carries no delivery fee. */
@@ -103,7 +108,7 @@ export async function transitionOrder(params: {
   const { data: order } = await serviceClient
     .from('orders')
     .select(
-      'id, status, customer_id, vendor_id, delivery_partner_id, tracking_updates, delivery_fee, payment_method, payment_status'
+      'id, order_number, status, customer_id, vendor_id, delivery_partner_id, tracking_updates, delivery_fee, payment_method, payment_status, total, delivery_address'
     )
     .eq('id', params.orderId)
     .maybeSingle();
@@ -190,6 +195,75 @@ export async function transitionOrder(params: {
     } catch {
       // Notifications are best-effort.
     }
+  }
+
+  // Fire off transactional SMS/WhatsApp async in background (non-blocking)
+  if (['preparing', 'out_for_delivery', 'delivered'].includes(to)) {
+    (async () => {
+      try {
+        let phone = (order.delivery_address as any)?.phone;
+        if (!phone && order.customer_id) {
+          const { data: cust } = await serviceClient
+            .from('profiles')
+            .select('phone')
+            .eq('id', order.customer_id)
+            .maybeSingle();
+          phone = cust?.phone;
+        }
+
+        if (!phone) return;
+
+        const orderNum = order.order_number || order.id.slice(0, 8).toUpperCase();
+
+        if (to === 'preparing' && order.vendor_id) {
+          const { data: v } = await serviceClient
+            .from('vendors')
+            .select('business_name')
+            .eq('id', order.vendor_id)
+            .maybeSingle();
+          await notifyKitchenCooking({
+            orderId: order.id,
+            orderNumber: orderNum,
+            customerPhone: phone,
+            vendorName: v?.business_name || 'Home Kitchen',
+          });
+        } else if (to === 'out_for_delivery') {
+          let riderName = 'Delivery Partner';
+          let riderPhone: string | undefined;
+          if (order.delivery_partner_id) {
+            const { data: partner } = await serviceClient
+              .from('delivery_partners')
+              .select('user_id')
+              .eq('id', order.delivery_partner_id)
+              .maybeSingle();
+            if (partner?.user_id) {
+              const { data: rProfile } = await serviceClient
+                .from('profiles')
+                .select('name, phone')
+                .eq('id', partner.user_id)
+                .maybeSingle();
+              if (rProfile?.name) riderName = rProfile.name;
+              if (rProfile?.phone) riderPhone = rProfile.phone;
+            }
+          }
+          await notifyOutForDelivery({
+            orderId: order.id,
+            orderNumber: orderNum,
+            customerPhone: phone,
+            riderName,
+            riderPhone,
+          });
+        } else if (to === 'delivered') {
+          await notifyOrderDelivered({
+            orderId: order.id,
+            orderNumber: orderNum,
+            customerPhone: phone,
+          });
+        }
+      } catch (err: any) {
+        console.warn('Transactional notification dispatch exception:', err?.message || err);
+      }
+    })();
   }
 
   return { ok: true, order: updated };

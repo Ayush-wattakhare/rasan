@@ -230,7 +230,7 @@ export default function VendorDashboardPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 sm:gap-3 w-full sm:w-auto">
               <Button
                 size="lg"
                 onClick={() => {
@@ -247,30 +247,30 @@ export default function VendorDashboardPage() {
                   vendorData?.is_paused
                     ? 'bg-red-600 hover:bg-red-500'
                     : 'bg-gray-800 hover:bg-gray-700'
-                } h-14 rounded-2xl px-6 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all`}
+                } h-12 sm:h-14 rounded-2xl px-5 sm:px-6 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all w-full sm:w-auto`}
               >
                 {vendorData?.is_paused ? '⏸️ Kitchen Paused' : '⚡ Pause Orders (30m)'}
               </Button>
 
               <Button
                 size="lg"
-                className="h-14 rounded-2xl bg-amber-600 px-7 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-amber-500"
+                className="h-12 sm:h-14 rounded-2xl bg-amber-600 px-5 sm:px-7 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-amber-500 w-full sm:w-auto"
                 asChild
               >
                 <Link href="/subscriber-broadcast">
-                  <Megaphone className="mr-2 h-4 w-4" />
-                  Kitchen Circle & Broadcast
+                  <Megaphone className="mr-2 h-4 w-4 shrink-0" />
+                  <span>Kitchen Circle &amp; Broadcast</span>
                 </Link>
               </Button>
 
               <Button
                 size="lg"
-                className="h-14 rounded-2xl bg-orange-600 px-8 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-orange-500"
+                className="h-12 sm:h-14 rounded-2xl bg-orange-600 px-6 sm:px-8 text-xs font-black tracking-widest text-white uppercase shadow-xl transition-all hover:bg-orange-500 w-full sm:w-auto"
                 asChild
               >
                 <Link href="/menu-management">
-                  <UtensilsCrossed className="mr-2 h-4 w-4" />
-                  Manage Menu
+                  <UtensilsCrossed className="mr-2 h-4 w-4 shrink-0" />
+                  <span>Manage Menu</span>
                 </Link>
               </Button>
             </div>

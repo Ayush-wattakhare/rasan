@@ -29,10 +29,10 @@ export default function TiffinSubscription({ onSelectPlan }: TiffinSubscriptionP
             </p>
           </div>
 
-          {/* Subscription Plans */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
+          {/* Subscription Plans — horizontal scroll on mobile, 3-col grid on md+ */}
+          <div className="flex md:grid md:grid-cols-3 gap-5 mb-12 overflow-x-auto pb-3 md:pb-0 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0">
             {/* Daily Plan */}
-            <Card className="border-2 hover:border-orange-300 transition-all hover:shadow-xl">
+            <Card className="border-2 hover:border-orange-300 transition-all hover:shadow-xl snap-start shrink-0 w-[80vw] sm:w-[72vw] md:w-auto">
               <CardContent className="p-6">
                 <div className="text-center mb-6">
                   <div className="text-4xl mb-3">🍱</div>
@@ -78,7 +78,7 @@ export default function TiffinSubscription({ onSelectPlan }: TiffinSubscriptionP
             </Card>
 
             {/* Weekly Plan */}
-            <Card className="border-2 border-orange-400 hover:border-orange-500 transition-all hover:shadow-xl relative">
+            <Card className="border-2 border-orange-400 hover:border-orange-500 transition-all hover:shadow-xl relative snap-start shrink-0 w-[80vw] sm:w-[72vw] md:w-auto">
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                 <div className="bg-orange-500 text-white px-4 py-1 rounded-full text-xs font-bold">
                   SAVE 20%
@@ -129,7 +129,7 @@ export default function TiffinSubscription({ onSelectPlan }: TiffinSubscriptionP
             </Card>
 
             {/* Monthly Plan */}
-            <Card className="border-2 border-green-400 hover:border-green-500 transition-all hover:shadow-xl relative">
+            <Card className="border-2 border-green-400 hover:border-green-500 transition-all hover:shadow-xl relative snap-start shrink-0 w-[80vw] sm:w-[72vw] md:w-auto">
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                 <div className="bg-green-500 text-white px-4 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                   <Star className="w-3 h-3" />
@@ -182,6 +182,7 @@ export default function TiffinSubscription({ onSelectPlan }: TiffinSubscriptionP
           </div>
 
           {/* Features */}
+
           <div className="grid md:grid-cols-4 gap-6 mb-8">
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
               <CardContent className="p-6 text-center">

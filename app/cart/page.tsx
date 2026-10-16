@@ -53,7 +53,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCFB] py-12 md:py-20 lg:pb-32">
+    <div className="min-h-screen bg-[#FDFCFB] py-12 md:py-20 pb-36 md:pb-32 lg:pb-32">
       <div className="container mx-auto px-4 max-w-6xl">
         {/* Simplified Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
@@ -126,6 +126,24 @@ export default function CartPage() {
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* 📱 Sticky Mobile Checkout Bar — visible only on mobile */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-100 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-between gap-4 max-w-sm mx-auto">
+          <div>
+            <p className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest">Total</p>
+            <p className="text-xl font-black text-[#1A1A1A]">
+              ₹{cart.total.toLocaleString('en-IN')}
+            </p>
+          </div>
+          <Button
+            onClick={handleCheckout}
+            className="flex-1 h-12 bg-orange-600 hover:bg-orange-700 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-600/20 transition-all"
+          >
+            Checkout Now →
+          </Button>
         </div>
       </div>
     </div>

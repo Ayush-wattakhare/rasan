@@ -9,7 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/lib/hooks/use-toast';
 import { createClient } from '@/lib/supabase/client';
-import { ChefHat, X, CheckCircle2, Loader2, UserCheck, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ChefHat, X, CheckCircle2, Loader2, UserCheck, ShieldCheck, ArrowRight, MapPin, Navigation } from 'lucide-react';
+import { LocationSelectorModal } from '@/components/location/location-selector-modal';
+import { AccurateLocationResult } from '@/lib/hooks/use-location';
 
 interface VendorApplicationModalProps {
   isOpen: boolean;
@@ -34,12 +36,28 @@ export default function VendorApplicationModal({ isOpen, onClose }: VendorApplic
     ifsc: '',
     cuisine: 'Indian',
     description: '',
+    lat: null as number | null,
+    lng: null as number | null,
   });
 
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const { toast } = useToast();
+
+  const handleLocationSelected = (loc: AccurateLocationResult) => {
+    setFormData((prev) => ({
+      ...prev,
+      lat: Number(loc.lat.toFixed(6)),
+      lng: Number(loc.lng.toFixed(6)),
+      address: prev.address || loc.details.full_address || loc.details.locality || prev.address,
+    }));
+    toast({
+      title: 'Kitchen GPS Selected 📍',
+      description: `${loc.details.locality || 'Coordinates'} (${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}) linked to your application.`,
+    });
+  };
 
   useEffect(() => {
     async function checkAuth() {
@@ -291,7 +309,17 @@ export default function VendorApplicationModal({ isOpen, onClose }: VendorApplic
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="address">Operating Kitchen Address *</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="address">Operating Kitchen Address *</Label>
+                      <button
+                        type="button"
+                        onClick={() => setIsMapOpen(true)}
+                        className="text-[0.7rem] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        {formData.lat && formData.lng ? 'Change Pin on Map' : '📍 Pin on Map (10 km Freshness Guard)'}
+                      </button>
+                    </div>
                     <Input
                       id="address"
                       placeholder="Flat 4B, Sunshine Apartments, MG Road, Pune"
@@ -300,6 +328,16 @@ export default function VendorApplicationModal({ isOpen, onClose }: VendorApplic
                       required
                       disabled={loading}
                     />
+                    {formData.lat && formData.lng ? (
+                      <p className="text-[0.68rem] text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        GPS Calibrated: <strong>{formData.lat.toFixed(4)}° N, {formData.lng.toFixed(4)}° E</strong> (Freshness radius active)
+                      </p>
+                    ) : (
+                      <p className="text-[0.65rem] text-gray-400">
+                        Tip: Click &quot;Pin on Map&quot; so customers within 10 km can order hot & fresh food.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="description">Kitchen Story / Specialty</Label>
@@ -394,6 +432,12 @@ export default function VendorApplicationModal({ isOpen, onClose }: VendorApplic
           </Card>
         )}
       </div>
+
+      <LocationSelectorModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        onSelectLocation={handleLocationSelected}
+      />
     </div>
   );
 }

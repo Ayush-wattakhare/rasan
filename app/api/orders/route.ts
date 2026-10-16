@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
 import { WEEKDAYS, calculateCartTotals, getItemPricing } from '@/lib/pricing/order-pricing';
 import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
+import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
 import type { PaymentMethod, SubscriptionType } from '@/types';
 
 const PAYMENT_METHODS: readonly PaymentMethod[] = ['cash', 'card', 'upi', 'wallet'];
@@ -108,11 +109,47 @@ export async function POST(request: NextRequest) {
 
     const { data: vendor } = await serviceClient
       .from('vendors')
-      .select('id, is_active')
+      .select('id, is_active, location')
       .eq('id', vendorId)
       .maybeSingle();
     if (!vendor?.is_active) {
       return NextResponse.json({ error: 'This kitchen is not accepting orders' }, { status: 409 });
+    }
+
+    // 🌡️ Server-side Freshness Guard — enforce MAX_DELIVERY_RADIUS_KM
+    // Runs even if the browser client is bypassed or manipulated.
+    // vendor.location is a WKT/WKB geography point; parse lng,lat from it.
+    const customerCoords = (deliveryAddress as any)?.coordinates;
+    if (customerCoords?.lat != null && customerCoords?.lng != null && vendor.location) {
+      try {
+        // PostGIS GEOGRAPHY(POINT) may arrive as WKT "POINT(lng lat)" or hex WKB.
+        // Only WKT is parseable here without PostGIS extension — non-critical fallback.
+        const match = String(vendor.location).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/);
+        if (match) {
+          const vendorLng = parseFloat(match[1]);
+          const vendorLat = parseFloat(match[2]);
+          const distKm = haversineDistanceKm(
+            Number(customerCoords.lat),
+            Number(customerCoords.lng),
+            vendorLat,
+            vendorLng
+          );
+          if (distKm > MAX_DELIVERY_RADIUS_KM) {
+            return NextResponse.json(
+              {
+                error: `Delivery address is too far (${distKm.toFixed(1)} km). This kitchen only delivers within ${MAX_DELIVERY_RADIUS_KM} km to ensure your meal arrives fresh and hot.`,
+                code: 'DELIVERY_TOO_FAR',
+                distanceKm: Math.round(distKm * 10) / 10,
+                maxKm: MAX_DELIVERY_RADIUS_KM,
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (distErr) {
+        // Non-critical — log and continue; do not block the order
+        console.warn('[FreshnessGuard] Server distance check failed:', distErr);
+      }
     }
 
     const pricedItems = items.map((item) => {

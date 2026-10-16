@@ -1,16 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { 
+  X, Home, Utensils, Store, Package, Repeat, User, LogOut, 
+  LayoutDashboard, Menu, Landmark, Megaphone, Navigation, Zap, 
+  Radio, Truck, IndianRupee, LifeBuoy 
+} from 'lucide-react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetClose,
+} from '@/components/ui/sheet';
 
 interface MobileNavProps {
   user?: {
@@ -24,78 +29,146 @@ export default function MobileNav({ user }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  const isActive = (path: string) => pathname === path;
+  // Close on route change
+  useEffect(() => { 
+    setOpen(false); 
+  }, [pathname]);
+
+  const isActive = (path: string) => {
+    if (
+      path === '/dashboard' ||
+      path === '/vendor-dashboard' ||
+      path === '/delivery-dashboard' ||
+      path === '/admin-dashboard'
+    ) {
+      return pathname === path;
+    }
+    return pathname === path || (path !== '/' && pathname.startsWith(path));
+  };
 
   const getNavLinks = () => {
-    const commonLinks = [
-      { href: '/meals', label: 'Menu' },
-      { href: '/vendors', label: 'Vendors' },
-    ];
-
     if (!user) {
       return [
-        ...commonLinks,
-        { href: '/login', label: 'Login' },
-        { href: '/register', label: 'Join Now' },
+        { href: '/meals', label: 'Explore Meals', icon: Utensils },
+        { href: '/vendors', label: 'Home Kitchens', icon: Store },
+        { href: '/login', label: 'Login', icon: User },
+        { href: '/register', label: 'Join Now', icon: LayoutDashboard },
       ];
     }
 
-    const roleLinks: Record<string, { href: string; label: string }[]> = {
-      customer: [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/orders', label: 'Orders' },
-        { href: '/subscriptions', label: 'Subscriptions' },
-        { href: '/profile', label: 'Profile' },
-      ],
-      vendor: [
-        { href: '/vendor-dashboard', label: 'Dashboard' },
-        { href: '/menu-management', label: 'Menu' },
-        { href: '/vendor-orders', label: 'Orders' },
-        { href: '/analytics', label: 'Analytics' },
-      ],
-      delivery: [
-        { href: '/delivery-dashboard', label: 'Dashboard' },
-        { href: '/available-orders', label: 'Available Orders' },
-        { href: '/active-deliveries', label: 'Active Deliveries' },
-      ],
-      admin: [
-        { href: '/admin-dashboard', label: 'Dashboard' },
-        { href: '/users', label: 'Users' },
-        { href: '/vendors', label: 'Vendors' },
-      ],
-    };
+    if (user.role === 'vendor') {
+      return [
+        { href: '/vendor-dashboard', label: 'Kitchen Hub', icon: Home },
+        { href: '/vendor-orders', label: 'Live Orders', icon: Package },
+        { href: '/menu-management', label: 'Menu Management', icon: Utensils },
+        { href: '/vendor-profile', label: 'Kitchen GPS & Profile', icon: Store },
+        { href: '/payouts', label: 'Earnings & Payouts', icon: Landmark },
+        { href: '/subscriber-broadcast', label: 'Customer Broadcast', icon: Megaphone },
+      ];
+    }
 
-    return [...commonLinks, ...(roleLinks[user.role] || [])];
+    if (user.role === 'delivery') {
+      return [
+        { href: '/delivery-dashboard', label: 'Pilot Radar', icon: Home },
+        { href: '/active-deliveries', label: 'Active Delivery', icon: Navigation },
+        { href: '/available-orders', label: 'Available Orders', icon: Package },
+        { href: '/earnings', label: 'Earnings & Cashout', icon: Zap },
+      ];
+    }
+
+    if (user.role === 'admin') {
+      return [
+        { href: '/admin-dashboard', label: 'Command Center', icon: LayoutDashboard },
+        { href: '/live-ops', label: 'Live Operations', icon: Radio },
+        { href: '/delivery-management', label: 'Delivery Riders', icon: Truck },
+        { href: '/vendor-management', label: 'Vendor Kitchens', icon: Store },
+        { href: '/settlements', label: 'Settlements', icon: Landmark },
+        { href: '/refunds-ledger', label: 'Refunds Ledger', icon: IndianRupee },
+        { href: '/support-management', label: 'Support Tickets', icon: LifeBuoy },
+      ];
+    }
+
+    // Default: Customer
+    return [
+      { href: '/dashboard', label: 'Home Dashboard', icon: Home },
+      { href: '/meals', label: 'Explore Meals', icon: Utensils },
+      { href: '/vendors', label: 'Home Kitchens', icon: Store },
+      { href: '/orders', label: 'Order History', icon: Package },
+      { href: '/subscriptions', label: 'Tiffin Plans', icon: Repeat },
+      { href: '/profile', label: 'Profile & Addresses', icon: User },
+    ];
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open Menu">
-          <span className="text-xl">☰</span>
+    <Sheet open={open} onOpenChange={setOpen}>
+      {/* Hamburger trigger with automatic toggle */}
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden w-10 h-10 rounded-xl cursor-pointer"
+          aria-label="Toggle Menu"
+        >
+          <Menu className="w-5 h-5" />
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Navigation</DialogTitle>
-        </DialogHeader>
-        <nav className="flex flex-col space-y-2">
-          {getNavLinks().map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setOpen(false)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                isActive(link.href)
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+      </SheetTrigger>
 
-          {user && (
+      {/* Bottom Sheet rendered directly in document.body via Portal */}
+      <SheetContent
+        side="bottom"
+        className="z-[100] rounded-t-[2.5rem] bg-white max-h-[85vh] p-0 overflow-y-auto pb-safe border-none shadow-2xl focus:outline-none"
+      >
+        <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
+
+        {/* Pull handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
+        </div>
+
+        {/* Sheet header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <p className="font-black text-[#1A1A1A] text-lg tracking-tight">Rasan</p>
+            {user && <p className="text-xs text-gray-400 font-medium capitalize">{user.role} account</p>}
+          </div>
+          <SheetClose asChild>
+            <button
+              type="button"
+              className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors cursor-pointer"
+              aria-label="Close menu"
+            >
+              <X className="w-4 h-4 text-gray-600" />
+            </button>
+          </SheetClose>
+        </div>
+
+        {/* Nav links */}
+        <nav className="px-4 py-4 space-y-1">
+          {getNavLinks().map((link) => {
+            const Icon = link.icon;
+            const active = isActive(link.href);
+            return (
+              <SheetClose asChild key={link.href}>
+                <Link
+                  href={link.href}
+                  className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all min-h-[52px] ${
+                    active
+                      ? 'bg-orange-50 text-orange-600 border border-orange-100'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-orange-500' : 'text-gray-400'}`} />
+                  {link.label}
+                  {active && <span className="ml-auto w-2 h-2 bg-orange-500 rounded-full" />}
+                </Link>
+              </SheetClose>
+            );
+          })}
+        </nav>
+
+        {/* Logout */}
+        {user && (
+          <div className="px-4 pb-8 pt-2 border-t border-gray-100 mt-2">
             <button
               type="button"
               onClick={async () => {
@@ -103,13 +176,14 @@ export default function MobileNav({ user }: MobileNavProps) {
                 await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
                 window.location.href = '/login';
               }}
-              className="mt-4 w-full rounded-xl py-2.5 px-4 text-xs font-black uppercase tracking-wider text-red-600 bg-red-50 hover:bg-red-100 text-left transition-colors"
+              className="w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors min-h-[52px] cursor-pointer"
             >
-              🚪 Logout
+              <LogOut className="w-5 h-5 text-red-400 shrink-0" />
+              Logout
             </button>
-          )}
-        </nav>
-      </DialogContent>
-    </Dialog>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

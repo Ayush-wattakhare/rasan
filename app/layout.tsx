@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { cookies } from 'next/headers';
@@ -14,6 +14,14 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: 'cover',
+  themeColor: '#EA580C',
+};
 
 export const metadata: Metadata = {
   title: 'Rasan - Authentic Home-Cooked Meals Delivered',
@@ -80,7 +88,10 @@ export default async function RootLayout({
             <div className="flex min-h-screen flex-col relative z-0">
               <Header user={profile} />
               <main className="flex-1 pb-24 md:pb-32">{children}</main>
-              <Footer />
+              {/* Hide footer on mobile for logged-in users — BottomBar serves as nav */}
+              <div className={profile ? 'hidden md:block' : ''}>
+                <Footer />
+              </div>
               {profile && <BottomBar userRole={profile.role} />}
               {!profile && <FloatingGetStarted />}
 

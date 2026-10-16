@@ -15,6 +15,8 @@ import {
   ChefHat,
   Sparkles,
   Calendar,
+  Flame,
+  TriangleAlert,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,6 +29,7 @@ import { orderService } from '@/lib/services/order-service';
 import { paymentService } from '@/lib/services/payment-service';
 import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
 import { getTimeOfDayInfo } from '@/lib/utils/format';
+import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
 import type { Address, PaymentMethod } from '@/types';
 
 interface CheckoutFormProps {
@@ -286,6 +289,38 @@ export function CheckoutForm({
       });
       addressSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
+    }
+
+    // 🌡️ Freshness Guard — block orders beyond MAX_DELIVERY_RADIUS_KM
+    // We need vendor kitchen coordinates. Look them up from the first cart item.
+    const vendorIdForCheck = cart.vendor_id || (cart.items[0] as any)?.vendor_id;
+    if (selectedAddress.coordinates && vendorIdForCheck) {
+      try {
+        const vendorRes = await fetch(`/api/vendors/${vendorIdForCheck}/location`);
+        if (vendorRes.ok) {
+          const vendorLoc = await vendorRes.json();
+          if (vendorLoc?.lat && vendorLoc?.lng) {
+            const distKm = haversineDistanceKm(
+              selectedAddress.coordinates.lat,
+              selectedAddress.coordinates.lng,
+              vendorLoc.lat,
+              vendorLoc.lng
+            );
+            if (distKm > MAX_DELIVERY_RADIUS_KM) {
+              toast({
+                title: '🌡️ Too Far for Fresh Delivery',
+                description: `This kitchen is ${distKm.toFixed(1)} km away. To keep your home-cooked meal piping hot & fresh, we only deliver within ${MAX_DELIVERY_RADIUS_KM} km. Please choose a kitchen closer to you.`,
+                variant: 'destructive',
+              });
+              addressSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return;
+            }
+          }
+        }
+      } catch {
+        // Non-blocking — if the location check fails, server will still validate
+        console.warn('[FreshnessGuard] Could not fetch vendor location for client-side check');
+      }
     }
 
     // 2. Validate Payment Method
@@ -568,6 +603,14 @@ export function CheckoutForm({
 
       {/* 5. Finalize & Pay Button with Instant Feedback */}
       <div className="pt-8 border-t-2 border-dashed border-gray-100 space-y-3">
+        {/* 🌡️ Freshness zone indicator */}
+        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-100 text-orange-800 rounded-2xl text-xs font-bold">
+          <Flame className="w-4 h-4 text-orange-500 shrink-0" />
+          <span>
+            <strong>Freshness Guarantee:</strong> We only deliver within {MAX_DELIVERY_RADIUS_KM} km so your ghar ka khana arrives piping hot. 🍱
+          </span>
+        </div>
+
         {!isReady && (
           <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-xs font-bold animate-pulse">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />

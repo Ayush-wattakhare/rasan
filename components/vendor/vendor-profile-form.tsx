@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/lib/hooks/use-toast';
 import { 
   Store, Phone, Mail, MapPin, Clock, ChefHat, Save, 
-  CheckCircle2, RefreshCcw, Landmark, Smartphone, ShieldCheck
+  CheckCircle2, RefreshCcw, Landmark, Smartphone, ShieldCheck,
+  Navigation, Compass, AlertCircle
 } from 'lucide-react';
+import { LocationSelectorModal } from '@/components/location/location-selector-modal';
+import { AccurateLocationResult } from '@/lib/hooks/use-location';
 
 interface VendorProfileFormProps {
   vendor: any;
@@ -19,10 +21,26 @@ interface VendorProfileFormProps {
 
 const DAY_LABELS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
+function parsePostGISLocation(loc: any): { lat: number; lng: number } | null {
+  if (!loc) return null;
+  if (typeof loc === 'object' && Array.isArray(loc.coordinates)) {
+    return { lng: Number(loc.coordinates[0]), lat: Number(loc.coordinates[1]) };
+  }
+  const match = String(loc).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/i);
+  if (match) {
+    return { lng: parseFloat(match[1]), lat: parseFloat(match[2]) };
+  }
+  return null;
+}
+
 export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
+
+  const initialCoords = parsePostGISLocation(vendor.location);
 
   const [form, setForm] = useState({
     business_name: vendor.business_name || '',
@@ -32,6 +50,8 @@ export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
     email: vendor.email || '',
     cuisine: (vendor.cuisine || []).join(', '),
     is_active: vendor.is_active ?? true,
+    lat: initialCoords?.lat ?? null,
+    lng: initialCoords?.lng ?? null,
     upi_id: vendor.bank_details?.upi_id || '',
     account_number: vendor.bank_details?.account_number || '',
     ifsc_code: vendor.bank_details?.ifsc_code || '',
@@ -48,6 +68,55 @@ export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
     },
   });
 
+  const isDefaultPuneCoords = form.lat === 18.5204 && form.lng === 73.8567;
+  const isGpsConfigured = form.lat !== null && form.lng !== null && !isDefaultPuneCoords;
+
+  const handleLocationSelected = (loc: AccurateLocationResult) => {
+    setForm((prev) => ({
+      ...prev,
+      lat: Number(loc.lat.toFixed(6)),
+      lng: Number(loc.lng.toFixed(6)),
+      address: prev.address || loc.details.full_address || loc.details.locality || prev.address,
+    }));
+    toast({
+      title: 'Kitchen Location Set 📍',
+      description: `Coordinates updated to ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}. Remember to click Save.`,
+    });
+  };
+
+  const handleDetectDeviceGps = () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: 'Geolocation Not Supported',
+        description: 'Your browser does not support automatic GPS detection.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDetectingGps(false);
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setForm((prev) => ({ ...prev, lat, lng }));
+        toast({
+          title: 'Device GPS Detected 🎯',
+          description: `Location calibrated to ${lat}, ${lng}. Remember to click Save.`,
+        });
+      },
+      (err) => {
+        setDetectingGps(false);
+        toast({
+          title: 'GPS Access Failed',
+          description: err.message || 'Please permit browser location or choose location on map.',
+          variant: 'destructive',
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const handleSave = async () => {
     setLoading(true);
     try {
@@ -60,28 +129,33 @@ export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
         preferred_payout_method: (form.upi_id ? 'upi' : 'bank') as 'upi' | 'bank',
       };
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('vendors')
-        .update({
+      const res = await fetch('/api/vendor/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: vendor.id,
           business_name: form.business_name.trim(),
           description: form.description.trim() || null,
           address: form.address.trim(),
           phone: form.phone.trim(),
           email: form.email.trim(),
-          cuisine: form.cuisine.split(',').map((c: string) => c.trim()).filter(Boolean),
+          cuisine: form.cuisine,
           is_active: form.is_active,
           bank_details: bankDetails,
           operating_hours: form.operating_hours,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', vendor.id);
+          lat: form.lat,
+          lng: form.lng,
+        }),
+      });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not save your profile.');
+      }
 
       toast({
-        title: 'Profile & Financial Details Saved',
-        description: 'Your vendor profile, UPI ID, and bank details have been updated.',
+        title: 'Profile & Kitchen GPS Saved! 📍',
+        description: 'Your vendor profile and kitchen coordinates have been updated.',
       });
       router.refresh();
     } catch (err: any) {
@@ -311,6 +385,76 @@ export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
           </div>
         </div>
 
+        {/* Kitchen GPS & Hyperlocal Location Card */}
+        <div className="bg-white rounded-[2rem] p-8 shadow-xl border border-gray-100 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-5 gap-3">
+            <div className="flex items-center gap-3">
+              <Navigation className="w-5 h-5 text-orange-600" />
+              <div>
+                <h2 className="text-lg font-black text-gray-900 uppercase italic tracking-tighter">
+                  Kitchen Location & GPS (10 km Freshness Guard)
+                </h2>
+                <p className="text-xs text-gray-400 font-semibold">
+                  Required to calculate exact delivery distance so food arrives hot to students & working professionals
+                </p>
+              </div>
+            </div>
+            {isGpsConfigured ? (
+              <span className="px-3 py-1 bg-green-50 text-green-700 text-[0.65rem] font-black uppercase rounded-full flex items-center gap-1.5 self-start sm:self-auto border border-green-200">
+                <CheckCircle2 className="w-3.5 h-3.5" /> GPS Calibrated
+              </span>
+            ) : (
+              <span className="px-3 py-1 bg-amber-50 text-amber-700 text-[0.65rem] font-black uppercase rounded-full flex items-center gap-1.5 self-start sm:self-auto border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5" /> Pune Center Default
+              </span>
+            )}
+          </div>
+
+          {/* Coordinate Display & Actions */}
+          <div className="p-5 rounded-2xl bg-orange-50/60 border border-orange-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-orange-950">Active Kitchen Coordinates</p>
+                <p className="text-sm font-mono font-bold text-orange-700 mt-0.5">
+                  {form.lat !== null && form.lng !== null
+                    ? `${form.lat.toFixed(6)}° N, ${form.lng.toFixed(6)}° E`
+                    : 'Not calibrated yet'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDetectDeviceGps}
+                  disabled={detectingGps}
+                  className="rounded-xl border-orange-200 hover:bg-orange-100 text-orange-700 text-xs font-bold"
+                >
+                  {detectingGps ? (
+                    <RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Compass className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {detectingGps ? 'Detecting…' : 'Use Current GPS'}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setIsMapOpen(true)}
+                  className="bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold"
+                >
+                  <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                  Select on Map / Area
+                </Button>
+              </div>
+            </div>
+
+            {isDefaultPuneCoords && (
+              <p className="text-xs text-amber-800 bg-amber-100/70 p-3 rounded-xl border border-amber-200/80 leading-relaxed font-medium">
+                ⚠️ Your kitchen is currently using the Pune city center default. Click <strong>&quot;Select on Map / Area&quot;</strong> or <strong>&quot;Use Current GPS&quot;</strong> to set your exact kitchen coordinates so nearby customers within 10 km can order!
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* Operating Hours */}
         <div className="bg-white rounded-[2rem] p-8 shadow-xl border border-gray-100 space-y-6">
           <div className="flex items-center justify-between border-b border-gray-100 pb-5">
@@ -387,6 +531,12 @@ export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
           </Button>
         </div>
       </div>
+
+      <LocationSelectorModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        onSelectLocation={handleLocationSelected}
+      />
     </div>
   );
 }

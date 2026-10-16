@@ -2,7 +2,160 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Mobile Navigation Drawer Portal Architecture & Close Defect Fix
+
+- **Date & Time:** 2026-10-17 04:05 IST
+- **Objective:** Fix the mobile navigation drawer uncloseable bug and BottomBar z-index conflict. When nested inside the sticky header with `backdrop-filter`, the drawer was trapped in a local stacking context and CSS containing block, rendering behind the floating BottomBar and warping backdrop touch events.
+- **Implementation Plan:**
+  1. Elevate Radix UI `SheetOverlay` and `SheetContent` to `z-[100]` in `components/ui/sheet.tsx`.
+  2. Refactor `components/layout/mobile-nav.tsx` to use Radix UI `Sheet`, `SheetTrigger`, `SheetContent`, and `SheetClose`, mounting directly to `document.body` via `SheetPortal`.
+  3. Wrap the mobile hamburger button in `SheetTrigger asChild` for native two-way toggle behavior.
+  4. Wrap the `X` button and all route links in `SheetClose asChild` for automatic drawer dismissal on selection.
+  5. Teleport drawer outside header stacking context to eliminate the `BottomBar` z-index overlap.
+- **Files Modified / Created:**
+  - `components/ui/sheet.tsx` - Elevated sheet overlay and content to `z-[100]`.
+  - `components/layout/mobile-nav.tsx` - Re-architected with Radix UI Sheet, SheetPortal, SheetClose, and accessible SheetTitle.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
+### [2026-10-17] - Mobile Viewport, iOS Auto-Zoom Defenses & Sticky CTA Collision Remediation
+
+- **Date & Time:** 2026-10-17 03:35 IST
+- **Objective:** Fix critical mobile layout and viewport defects across Rasan: add Next.js 16 Viewport export with `viewportFit: cover`, prevent iOS Safari auto-zoom on input focus, eliminate sticky mobile cart dock collisions on `/cart` and `/checkout`, convert delivery address entry into a native mobile bottom sheet, add a sticky Add-to-Cart mobile bar on meal detail pages, reorganize the location map modal for small screens, and link official PWA brand icon assets.
+- **Implementation Plan:**
+  1. Add Next.js `Viewport` export (`viewportFit: 'cover'`, `themeColor: '#EA580C'`) to `app/layout.tsx`.
+  2. Add `-webkit-tap-highlight-color: transparent` and safe-area utilities (`.pb-safe`, `.pt-safe`) in `app/globals.css`.
+  3. Upgrade input and textarea base typography from `text-sm` to `text-base sm:text-sm` in `components/ui/input.tsx` and `components/ui/textarea.tsx` to stop iOS Safari auto-zoom on focus.
+  4. Hide `BottomBar` during `/cart` and `/checkout` in `components/layout/bottom-bar.tsx` so the floating dock never obstructs the checkout button.
+  5. Restrict `FloatingGetStarted` on mobile and meal/cart/checkout routes in `components/floating-get-started.tsx`.
+  6. Fix duplicate inline `OrderTracker` Handover PIN container in `app/(customer)/orders/page.tsx` with responsive layout.
+  7. Scale H1 typography and add a sticky mobile Add-to-Cart bar in `components/meals/meal-details.tsx`.
+  8. Refactor `components/location/location-selector-modal.tsx` with swipeable chips and prioritized map canvas on mobile.
+  9. Convert address modal to responsive bottom sheet in `components/checkout/delivery-address-section.tsx`.
+  10. Create `public/rasan-icon.svg` and link in `app/manifest.ts`.
+- **Files Modified / Created:**
+  - `app/layout.tsx` - Next.js Viewport export with `viewportFit: 'cover'` and theme color.
+  - `app/globals.css` - Tap highlight reset and iOS safe area padding utilities.
+  - `components/ui/input.tsx` - Font size upgrade to prevent iOS Safari auto-zoom.
+  - `components/ui/textarea.tsx` - Font size upgrade to prevent iOS Safari auto-zoom.
+  - `components/layout/bottom-bar.tsx` - Route exclusion for cart/checkout and `pb-safe` padding.
+  - `components/floating-get-started.tsx` - Restrict on mobile, meal catalog, and checkout.
+  - `app/(customer)/orders/page.tsx` - Responsive Handover Security PIN container.
+  - `components/meals/meal-details.tsx` - Scaled H1, reduced card padding, and added sticky mobile Add-to-Cart bar.
+  - `components/location/location-selector-modal.tsx` - Responsive header, horizontal scroll chips, and prioritized map canvas.
+  - `components/checkout/delivery-address-section.tsx` - Native mobile bottom sheet styling.
+  - `public/rasan-icon.svg` - New PWA brand icon with bento food artwork.
+  - `app/manifest.ts` - Linked new PWA icon assets.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
+### [2026-10-17] - Multi-Role Mobile UX Audit & Cross-Persona Layout Fixes
+
+- **Date & Time:** 2026-10-17 03:15 IST
+- **Objective:** Fix multi-role mobile layout bugs across Vendor, Delivery Rider, Admin, and Customer roles. Isolate role navigation drawers so worker accounts do not get consumer links, implement role-dedicated mobile bottom navigation docks, eliminate flexbox left-scroll clipping on mobile admin docks, and resolve 375px screen metric card and action button wrapping bugs.
+- **Implementation Plan:**
+  1. Audit role navigation links in `components/layout/mobile-nav.tsx` and isolate by persona (`vendor`, `delivery`, `admin`, `customer`).
+  2. Implement dedicated bottom navigation docks in `components/layout/bottom-bar.tsx` for Vendors (`Hub`, `Orders`, `Menu`, `Payouts`, `Kitchen`) and Riders (`Radar`, `Active`, `Pool`, `Cashout`), delegating Admin to `AdminBottomNav`.
+  3. Fix left-scroll clipping on `components/layout/admin-bottom-nav.tsx` by replacing centering overflow flex with snap-scroll container (`snap-x snap-mandatory scrollbar-none px-3`).
+  4. Fix metric card overlap in `components/vendor/stats-overview.tsx` on 375px screens by scaling padding and typography (`text-2xl sm:text-3xl`).
+  5. Prevent action button overflow in `app/(delivery)/delivery-dashboard/delivery-dashboard-main.tsx` by converting payout/cashout row to responsive column-to-row stack.
+  6. Prevent CTA button truncation in `app/(vendor)/vendor-dashboard/page.tsx` on narrow mobile screens.
+  7. Prevent PIN security instruction squeeze in `components/orders/order-tracker.tsx` on 360–375px viewports.
+- **Files Modified / Created:**
+  - `components/layout/mobile-nav.tsx` - Role-isolated navigation drawer with dedicated links for Vendor, Rider, Admin, and Customer.
+  - `components/layout/bottom-bar.tsx` - Role-aware bottom docks for Vendor and Rider, avoiding customer dock bleed.
+  - `components/layout/admin-bottom-nav.tsx` - Resolved flexbox left-side scroll clipping via natural snap-scroll alignment.
+  - `components/vendor/stats-overview.tsx` - Responsive metric typography and padding for 375px mobile screens.
+  - `app/(delivery)/delivery-dashboard/delivery-dashboard-main.tsx` - Responsive payout header and cashout CTA button stack.
+  - `app/(vendor)/vendor-dashboard/page.tsx` - Full-width responsive action button container on mobile.
+  - `components/orders/order-tracker.tsx` - Responsive handover security PIN container to prevent text squeeze.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
+### [2026-10-17] - Vendor Kitchen GPS Calibration, Transactional SMS Dispatch Wiring & City Unavailability Screen
+
+- **Date & Time:** 2026-10-17 02:55 IST
+- **Objective:** Fix the hardcoded Pune center kitchen coordinates bug by allowing home chefs to calibrate their exact kitchen location via interactive map/GPS. Wire transactional SMS/WhatsApp dispatches into order lifecycle transitions. Show the out-of-city screen on the homepage when visiting from outside Pune/PCMC. Remove dead component code.
+- **Implementation Plan:**
+  1. Create `app/api/vendor/profile/route.ts` API endpoint supporting PostGIS `POINT(lng lat)` updates for vendor kitchens.
+  2. Update `components/vendor/vendor-profile-form.tsx` with dedicated Kitchen GPS card, device GPS detection, and `LocationSelectorModal` map picker.
+  3. Update `components/partner/vendor-application-modal.tsx` and `app/api/become-vendor/route.ts` to accept kitchen GPS coordinates during new vendor onboarding.
+  4. Wire `notifyKitchenCooking`, `notifyOutForDelivery`, and `notifyOrderDelivered` in `lib/orders/transition.ts` on status transitions.
+  5. Wire `CityUnavailable` into `components/home/hero.tsx` when user's location is > 35 km away from Pune, with preview mode option.
+  6. Delete dead/orphaned `components/layout/mobile-bottom-nav.tsx` file.
+- **Files Modified / Created:**
+  - `app/api/vendor/profile/route.ts` - New API route handling vendor profile updates with PostGIS kitchen coordinates.
+  - `components/vendor/vendor-profile-form.tsx` - Added Kitchen GPS card, coordinates parsing, map selector, and device GPS detection.
+  - `components/partner/vendor-application-modal.tsx` - Added map location pin and GPS coordinates to vendor application flow.
+  - `app/api/become-vendor/route.ts` - Accepted lat/lng and stored PostGIS POINT instead of default.
+  - `lib/orders/transition.ts` - Wired asynchronous SMS/WhatsApp alerts for kitchen cooking, out for delivery, and delivered.
+  - `components/location/city-unavailable.tsx` - Fixed emoji typos, added preview mode callback support.
+  - `components/home/hero.tsx` - Wired `CityUnavailable` detection for non-Pune visitors with preview mode toggle.
+  - `components/layout/mobile-bottom-nav.tsx` - Deleted dead orphaned file.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm run build` passed with exit code 0 (99/99 routes generated). `npm test` passed 10/10 test suites (117/117 tests passing).
+
+---
+
+### [2026-10-17] - Phase 1 + 2 Mobile UX Overhaul (10 Mobile Fixes)
+
+- **Date & Time:** 2026-10-17 02:30 IST
+- **Objective:** Modernize and optimize the mobile viewport UX across 375px screens: fix typography overflow, compact search bar, horizontal scrolling chips/tiffin plans, replace center dialog with native bottom sheet, and add sticky mobile cart checkout bar.
+- **Implementation Plan:**
+  1. Shrink hero H1 to `text-[2.4rem] sm:text-5xl` and reduce padding to `pt-12 pb-10` on mobile.
+  2. Make search bar stack cleanly on mobile; convert category chips to swipeable horizontal snap carousel.
+  3. Fix bottom bar item min-width to `3.8rem` so 5 navigation items fit cleanly on 375px screens.
+  4. Rewrite `components/layout/mobile-nav.tsx` as a sleek sliding bottom sheet with backdrop.
+  5. Convert tiffin subscription plan cards to horizontal snap carousel on mobile screens.
+  6. Add sticky mobile checkout bar to `app/cart/page.tsx` showing total and checkout button.
+  7. Hide footer on mobile for logged-in users who have the bottom navigation bar.
+- **Files Modified / Created:**
+  - `components/home/hero.tsx` - H1 sizing, search bar layout, compact padding, snap chips.
+  - `components/layout/bottom-bar.tsx` - Reduced min-width and padding for 375px screens.
+  - `components/layout/mobile-nav.tsx` - Native sliding bottom sheet drawer navigation.
+  - `components/home/tiffin-subscription.tsx` - Swipeable snap carousel on mobile.
+  - `app/cart/page.tsx` - Sticky mobile checkout bar.
+  - `app/layout.tsx` - Mobile footer visibility condition.
+  - `app/globals.css` - Added `scrollbar-none` utility class.
+- **Status:** Completed (Committed in `46ec947`)
+- **Verification / Testing:** `npm run build` passed with exit code 0.
+
+---
+
+### [2026-10-17] - Geo-Fencing Freshness Guard, 10 KM Delivery Radius & City Unavailability Screen
+
+- **Date & Time:** 2026-10-17 02:09 IST
+- **Objective:** Implement hyper-local delivery radius enforcement so Rasan only serves nearby customers (students & working professionals within 10 km), ensuring food arrives piping hot. Show a "not in your city yet" screen for out-of-city visitors.
+- **Implementation Plan:**
+  1. Add `MAX_DELIVERY_RADIUS_KM = 10` constant and `haversineDistanceKm()` utility to `lib/utils/constants.ts`.
+  2. Add client-side freshness guard in `checkout-form.tsx` that fetches vendor kitchen GPS and blocks checkout if distance > 10 km.
+  3. Add server-side freshness guard in `app/api/orders/route.ts` (protects against API bypass).
+  4. Create `app/api/vendors/[id]/location/route.ts` lightweight endpoint returning only vendor lat/lng for distance calculation.
+  5. Create `components/location/city-unavailable.tsx` — branded screen for out-of-city visitors with waitlist email signup.
+- **Files Modified / Created:**
+  - `lib/utils/constants.ts` - Added `MAX_DELIVERY_RADIUS_KM`, `haversineDistanceKm()`.
+  - `components/checkout/checkout-form.tsx` - Client-side 10 km guard + freshness banner in UI.
+  - `app/api/orders/route.ts` - Server-side distance validation with `DELIVERY_TOO_FAR` error code.
+  - `app/api/vendors/[id]/location/route.ts` - New micro-endpoint returning vendor kitchen lat/lng.
+  - `components/location/city-unavailable.tsx` - New "Coming soon to your city" component with waitlist.
+  - `docs/CHANGES_LOG.md` - Updated with this entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm run build` — ✅ Exit code 0, compiled cleanly. TypeScript passed 0 errors.
+
+---
+
 ### [2026-10-15] - Payment Webhook Idempotency, Transactional SMS/WhatsApp Gateway & Production Runbook
+
 
 - **Date & Time:** 2026-10-15 00:58 IST
 - **Objective:** Complete Pillar 2 (Razorpay webhook idempotency, duplicate retry protection, payment.failed handling), Pillar 4 (pluggable transactional SMS & WhatsApp messaging service with zero-cost mock fallback), and Pillar 5 (production launch pre-flight runbook for Migration 005 and custom domain mapping).

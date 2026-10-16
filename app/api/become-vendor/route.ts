@@ -22,6 +22,8 @@ export async function POST(request: NextRequest) {
       email,
       password,
       fullName,
+      lat,
+      lng,
     } = body;
 
     if (!businessName || !address) {
@@ -70,6 +72,10 @@ export async function POST(request: NextRequest) {
       sunday: { open_time: '09:00', close_time: '21:00', is_open: true },
     };
 
+    // Calculate valid PostGIS location (WKT POINT(lng lat))
+    const vendorLat = typeof lat === 'number' && !isNaN(lat) ? lat : 18.5204;
+    const vendorLng = typeof lng === 'number' && !isNaN(lng) ? lng : 73.8567;
+
     // Insert pending vendor record matching database schema
     const { data: vendor, error: vendorError } = await serviceSupabase
       .from('vendors')
@@ -78,7 +84,7 @@ export async function POST(request: NextRequest) {
         business_name: businessName,
         description: description || `${businessName} - Authentic home-cooked food`,
         cuisine: cuisine ? (Array.isArray(cuisine) ? cuisine : [cuisine]) : ['Indian'],
-        location: 'POINT(73.8567 18.5204)' as any,
+        location: `POINT(${vendorLng} ${vendorLat})` as any,
         address,
         phone: phone || '',
         email: applicant.email,

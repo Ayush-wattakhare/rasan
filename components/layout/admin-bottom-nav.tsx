@@ -36,7 +36,7 @@ export default function AdminBottomNav() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 px-2 sm:px-4 pb-4 sm:pb-6 pointer-events-none flex justify-center">
-      <nav className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] px-2 py-1.5 flex items-center gap-0.5 sm:gap-1 pointer-events-auto ring-1 ring-white/5 transition-all duration-300 max-w-full overflow-x-auto">
+      <nav className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] px-3 py-1.5 flex items-center gap-0.5 sm:gap-1 pointer-events-auto ring-1 ring-white/5 transition-all duration-300 max-w-full overflow-x-auto scrollbar-none snap-x snap-mandatory">
         {links.map((link) => {
           const active = isActive(link.href);
           const Icon = link.icon;
@@ -45,7 +45,7 @@ export default function AdminBottomNav() {
             <Link
               key={link.href}
               href={link.href}
-              className={`relative group flex flex-col items-center justify-center min-w-[3.4rem] sm:min-w-[4.4rem] py-1.5 sm:py-2 rounded-2xl transition-all duration-300 shrink-0 ${
+              className={`relative group flex flex-col items-center justify-center min-w-[3.4rem] sm:min-w-[4.4rem] py-1.5 sm:py-2 rounded-2xl transition-all duration-300 shrink-0 snap-start ${
                 active ? 'text-orange-500 bg-white/5' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
             >
