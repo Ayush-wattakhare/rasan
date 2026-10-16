@@ -408,10 +408,10 @@ export function DeliveryAddressSection({
           )}
         </CardContent>
 
-        {/* ── SWIGGY / ZOMATO STYLE COMPREHENSIVE ADDRESS MODAL ── */}
+        {/* ── SWIGGY / ZOMATO STYLE COMPREHENSIVE ADDRESS MODAL (Bottom Sheet on Mobile) ── */}
         {showModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 overflow-y-auto">
-            <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 md:p-8 shadow-2xl relative border border-gray-100 animate-in zoom-in-95 duration-300 max-h-[92vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
+            <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] max-w-lg w-full p-5 sm:p-6 md:p-8 shadow-2xl relative border border-gray-100 animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto pb-safe">
               {/* Close Button */}
               <button
                 onClick={() => setShowModal(false)}

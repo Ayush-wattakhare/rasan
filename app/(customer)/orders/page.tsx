@@ -41,7 +41,7 @@ function OrderTracker({ order, onClose, onReview }: { order: Order; onClose: () 
 
         {/* Handover Security PIN */}
         {order.status !== 'delivered' && order.status !== 'cancelled' && (
-          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white rounded-3xl p-5 shadow-lg flex items-center justify-between gap-4">
+          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-1.5">
                 <KeyRound className="w-3.5 h-3.5 text-orange-200" />
@@ -51,7 +51,7 @@ function OrderTracker({ order, onClose, onReview }: { order: Order; onClose: () 
               </div>
               <p className="text-xs font-bold text-white">Share with rider at doorstep</p>
             </div>
-            <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl px-4 py-2 text-center shrink-0">
+            <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl px-4 py-2 text-center shrink-0 w-full sm:w-auto flex sm:flex-col items-center justify-between sm:justify-center">
               <p className="text-[0.5rem] font-black uppercase tracking-widest text-orange-100">OTP</p>
               <p className="text-2xl font-black tracking-widest font-mono text-white leading-tight">{getDeliveryOtp(order)}</p>
             </div>

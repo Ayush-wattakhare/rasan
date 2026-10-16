@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { cookies } from 'next/headers';
@@ -14,6 +14,14 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: 'cover',
+  themeColor: '#EA580C',
+};
 
 export const metadata: Metadata = {
   title: 'Rasan - Authentic Home-Cooked Meals Delivered',

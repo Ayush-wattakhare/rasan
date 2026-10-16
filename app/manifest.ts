@@ -12,13 +12,13 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: 'portrait-primary',
     icons: [
       {
-        src: '/globe.svg',
+        src: '/rasan-icon.svg',
         sizes: '192x192',
         type: 'image/svg+xml',
         purpose: 'any',
       },
       {
-        src: '/globe.svg',
+        src: '/rasan-icon.svg',
         sizes: '512x512',
         type: 'image/svg+xml',
         purpose: 'maskable',

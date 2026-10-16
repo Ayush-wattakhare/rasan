@@ -75,7 +75,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
                 </span>
               )}
             </div>
-            <h1 className="text-5xl md:text-6xl font-black text-[#1A1A1A] tracking-tighter italic leading-tight uppercase">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-[#1A1A1A] tracking-tighter italic leading-tight uppercase">
               {meal.name}
             </h1>
             <div className="flex items-center gap-2 pt-2">
@@ -110,7 +110,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
             </div>
           </div>
 
-          <div className="p-8 rounded-[2rem] bg-white border border-gray-100 shadow-xl space-y-4">
+          <div className="p-5 sm:p-8 rounded-[2rem] bg-white border border-gray-100 shadow-xl space-y-4">
              <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-black text-[#1A1A1A] tracking-tighter">{formatCurrency(meal.price)}</span>
                 <span className="text-sm font-bold text-gray-400 uppercase tracking-widest italic line-through">₹{(meal.price * 1.2).toFixed(0)}</span>
@@ -178,6 +178,34 @@ export default function MealDetails({ meal }: MealDetailsProps) {
          <div className="lg:col-span-1">
             <NutritionalInfo nutritionalInfo={meal.nutritional_info} />
          </div>
+      </div>
+
+      {/* 📱 Sticky Mobile Quick Add-to-Cart Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-100 px-4 py-3 pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-between gap-4 max-w-sm mx-auto">
+          <div>
+            <span className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest block">Price</span>
+            <span className="text-xl font-black text-[#1A1A1A]">
+              {formatCurrency(meal.price)}
+            </span>
+          </div>
+          <div className="flex-1 max-w-[200px]">
+            <AddToCartButton
+              meal={{
+                id: meal.id,
+                vendor_id: meal.vendor_id,
+                name: meal.name,
+                price: meal.price,
+                image_url: meal.image_url,
+                is_veg: meal.is_vegetarian,
+                is_available: meal.is_available,
+                stock: meal.stock,
+              }}
+              size="default"
+              showQuantity={false}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

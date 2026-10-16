@@ -2,6 +2,40 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Mobile Viewport, iOS Auto-Zoom Defenses & Sticky CTA Collision Remediation
+
+- **Date & Time:** 2026-10-17 03:35 IST
+- **Objective:** Fix critical mobile layout and viewport defects across Rasan: add Next.js 16 Viewport export with `viewportFit: cover`, prevent iOS Safari auto-zoom on input focus, eliminate sticky mobile cart dock collisions on `/cart` and `/checkout`, convert delivery address entry into a native mobile bottom sheet, add a sticky Add-to-Cart mobile bar on meal detail pages, reorganize the location map modal for small screens, and link official PWA brand icon assets.
+- **Implementation Plan:**
+  1. Add Next.js `Viewport` export (`viewportFit: 'cover'`, `themeColor: '#EA580C'`) to `app/layout.tsx`.
+  2. Add `-webkit-tap-highlight-color: transparent` and safe-area utilities (`.pb-safe`, `.pt-safe`) in `app/globals.css`.
+  3. Upgrade input and textarea base typography from `text-sm` to `text-base sm:text-sm` in `components/ui/input.tsx` and `components/ui/textarea.tsx` to stop iOS Safari auto-zoom on focus.
+  4. Hide `BottomBar` during `/cart` and `/checkout` in `components/layout/bottom-bar.tsx` so the floating dock never obstructs the checkout button.
+  5. Restrict `FloatingGetStarted` on mobile and meal/cart/checkout routes in `components/floating-get-started.tsx`.
+  6. Fix duplicate inline `OrderTracker` Handover PIN container in `app/(customer)/orders/page.tsx` with responsive layout.
+  7. Scale H1 typography and add a sticky mobile Add-to-Cart bar in `components/meals/meal-details.tsx`.
+  8. Refactor `components/location/location-selector-modal.tsx` with swipeable chips and prioritized map canvas on mobile.
+  9. Convert address modal to responsive bottom sheet in `components/checkout/delivery-address-section.tsx`.
+  10. Create `public/rasan-icon.svg` and link in `app/manifest.ts`.
+- **Files Modified / Created:**
+  - `app/layout.tsx` - Next.js Viewport export with `viewportFit: 'cover'` and theme color.
+  - `app/globals.css` - Tap highlight reset and iOS safe area padding utilities.
+  - `components/ui/input.tsx` - Font size upgrade to prevent iOS Safari auto-zoom.
+  - `components/ui/textarea.tsx` - Font size upgrade to prevent iOS Safari auto-zoom.
+  - `components/layout/bottom-bar.tsx` - Route exclusion for cart/checkout and `pb-safe` padding.
+  - `components/floating-get-started.tsx` - Restrict on mobile, meal catalog, and checkout.
+  - `app/(customer)/orders/page.tsx` - Responsive Handover Security PIN container.
+  - `components/meals/meal-details.tsx` - Scaled H1, reduced card padding, and added sticky mobile Add-to-Cart bar.
+  - `components/location/location-selector-modal.tsx` - Responsive header, horizontal scroll chips, and prioritized map canvas.
+  - `components/checkout/delivery-address-section.tsx` - Native mobile bottom sheet styling.
+  - `public/rasan-icon.svg` - New PWA brand icon with bento food artwork.
+  - `app/manifest.ts` - Linked new PWA icon assets.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (117/117 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
 ### [2026-10-17] - Multi-Role Mobile UX Audit & Cross-Persona Layout Fixes
 
 - **Date & Time:** 2026-10-17 03:15 IST

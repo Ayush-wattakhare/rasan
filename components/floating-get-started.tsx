@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ShoppingBag, X } from 'lucide-react';
 
 export default function FloatingGetStarted() {
+  const pathname = usePathname();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
 
@@ -25,9 +27,21 @@ export default function FloatingGetStarted() {
 
   if (isDismissed) return null;
 
+  // Don't show if already browsing meals, in checkout, or on auth screens
+  if (
+    pathname === '/meals' ||
+    pathname.startsWith('/meals/') ||
+    pathname === '/cart' ||
+    pathname === '/checkout' ||
+    pathname === '/login' ||
+    pathname === '/register'
+  ) {
+    return null;
+  }
+
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 transition-all duration-300 ${
+      className={`fixed bottom-6 right-6 z-50 transition-all duration-300 hidden sm:block ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'
       }`}
     >

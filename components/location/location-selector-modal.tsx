@@ -274,27 +274,27 @@ export function LocationSelectorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[94vh] flex flex-col overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-300">
         
         {/* Header Bar */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/20">
-              <MapPin className="w-5 h-5" />
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <span className="text-[0.6rem] font-black text-orange-600 uppercase tracking-[0.25em] flex items-center gap-1.5">
-                <Sparkles className="w-3 h-3" /> Select Delivery Location
+              <span className="text-[0.55rem] sm:text-[0.6rem] font-black text-orange-600 uppercase tracking-[0.2em] sm:tracking-[0.25em] flex items-center gap-1 sm:gap-1.5">
+                <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Select Delivery Location
               </span>
-              <h2 className="text-xl font-black text-gray-900 tracking-tight">Pin Your Exact Address on Map</h2>
+              <h2 className="text-sm sm:text-xl font-black text-gray-900 tracking-tight">Pin Your Exact Address on Map</h2>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors"
+            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
@@ -302,7 +302,7 @@ export function LocationSelectorModal({
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           
           {/* Left Column: Search & Quick Selection */}
-          <div className="w-full md:w-80 p-5 border-r border-gray-100 flex flex-col gap-4 bg-gray-50/50 overflow-y-auto shrink-0">
+          <div className="w-full md:w-80 p-3 sm:p-5 border-b md:border-b-0 md:border-r border-gray-100 flex flex-col gap-2.5 sm:gap-4 bg-gray-50/50 overflow-y-auto shrink-0 max-h-[35vh] md:max-h-none">
             
             {/* Search Input */}
             <div className="relative">
@@ -354,16 +354,16 @@ export function LocationSelectorModal({
             </Button>
 
             {/* Popular Localities (Pune / PCMC) */}
-            <div className="space-y-2 pt-2">
-              <p className="text-[0.65rem] font-black text-gray-400 uppercase tracking-widest">Popular PCMC / Pune Zones</p>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="space-y-1 sm:space-y-2">
+              <p className="text-[0.6rem] sm:text-[0.65rem] font-black text-gray-400 uppercase tracking-widest">Popular PCMC / Pune Zones</p>
+              <div className="flex md:flex-wrap gap-1.5 overflow-x-auto md:overflow-visible pb-1 md:pb-0 scrollbar-none snap-x">
                 {POPULAR_LOCALITIES.map((loc) => {
                   const isSelected = locationDetails.locality?.toLowerCase().includes(loc.name.toLowerCase());
                   return (
                     <button
                       key={loc.name}
                       onClick={() => handleSelectPlace(loc)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      className={`snap-start shrink-0 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                         isSelected
                           ? 'bg-orange-600 text-white shadow-md shadow-orange-600/30'
                           : 'bg-white text-gray-700 border border-gray-200 hover:border-orange-300 hover:bg-orange-50/50'
@@ -376,8 +376,8 @@ export function LocationSelectorModal({
               </div>
             </div>
 
-            {/* Hint Box */}
-            <div className="mt-auto p-3.5 rounded-2xl bg-orange-50/70 border border-orange-100/80 text-[0.7rem] text-orange-950 flex items-start gap-2.5">
+            {/* Hint Box (Desktop only to conserve mobile height) */}
+            <div className="mt-auto hidden md:flex p-3.5 rounded-2xl bg-orange-50/70 border border-orange-100/80 text-[0.7rem] text-orange-950 items-start gap-2.5">
               <span className="text-base">💡</span>
               <p className="leading-tight">
                 <strong>Tip:</strong> Drag the orange pin or tap anywhere on the map to pinpoint your building entrance.
@@ -386,7 +386,7 @@ export function LocationSelectorModal({
           </div>
 
           {/* Right Column: Map & Selection Summary */}
-          <div className="flex-1 flex flex-col relative min-h-[320px] sm:min-h-[420px]">
+          <div className="flex-1 flex flex-col relative min-h-[220px] sm:min-h-[320px] md:min-h-[420px]">
             
             {/* Leaflet Map Canvas */}
             <div className="flex-1 w-full h-full relative" style={{ minHeight: '300px' }}>
@@ -403,20 +403,20 @@ export function LocationSelectorModal({
             </div>
 
             {/* Selected Location Details Card (Pinned to bottom of modal) */}
-            <div className="p-4 sm:p-5 bg-white border-t border-gray-100 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 z-10">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <Building className="w-5 h-5" />
+            <div className="p-3 sm:p-5 bg-white border-t border-gray-100 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 z-10 pb-safe">
+              <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <Building className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-orange-600 uppercase tracking-widest">Selected Delivery Area</span>
+                    <span className="text-[0.65rem] sm:text-xs font-black text-orange-600 uppercase tracking-widest">Selected Delivery Area</span>
                     {isReverseGeocoding && <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />}
                   </div>
-                  <h3 className="text-lg font-black text-gray-900 tracking-tight truncate">
+                  <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight truncate">
                     {locationDetails.locality || 'Pimpri'}
                   </h3>
-                  <p className="text-xs text-gray-500 line-clamp-1">
+                  <p className="text-[0.65rem] sm:text-xs text-gray-500 line-clamp-1">
                     {locationDetails.full_address || `${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}`}
                   </p>
                 </div>
@@ -426,13 +426,13 @@ export function LocationSelectorModal({
                 <Button
                   onClick={onClose}
                   variant="outline"
-                  className="rounded-xl h-12 px-5 font-bold text-xs uppercase tracking-wider"
+                  className="flex-1 sm:flex-initial rounded-xl h-10 sm:h-12 px-4 sm:px-5 font-bold text-xs uppercase tracking-wider"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleConfirmLocation}
-                  className="flex-1 sm:flex-initial bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-xl h-12 px-6 shadow-lg shadow-orange-600/25 flex items-center gap-2"
+                  className="flex-2 sm:flex-initial bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-xl h-10 sm:h-12 px-5 sm:px-6 shadow-lg shadow-orange-600/25 flex items-center justify-center gap-2"
                 >
                   <CheckCircle2 className="w-4 h-4" /> Confirm Location
                 </Button>
