@@ -41,8 +41,8 @@ export const ROLE_ROUTES: Record<UserRole, readonly string[]> = {
   ],
 };
 
-/** Pages any signed-in user may open regardless of role. */
-export const SHARED_LOGGED_IN_ROUTES: readonly string[] = ['/meals', '/cart'];
+/** Pages any signed-in user may open regardless of role (shared authenticated pages). */
+export const SHARED_LOGGED_IN_ROUTES: readonly string[] = ['/notifications'];
 
 export const ROLE_HOME: Record<UserRole, string> = {
   customer: '/dashboard',
@@ -66,6 +66,7 @@ export function isProtectedPath(pathname: string): boolean {
 }
 
 export function canAccessPath(role: UserRole, pathname: string): boolean {
+  if (!isProtectedPath(pathname)) return true;
   return [...ROLE_ROUTES[role], ...SHARED_LOGGED_IN_ROUTES].some((route) =>
     matchesPrefix(pathname, route)
   );

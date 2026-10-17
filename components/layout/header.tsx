@@ -469,10 +469,10 @@ export default function Header({ user }: HeaderProps) {
                 <button
                   type="button"
                   onClick={() => setIsLocationModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50/80 border border-orange-100 hover:bg-orange-100 rounded-xl text-orange-900 text-xs font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50/80 border border-orange-100 hover:bg-orange-100 active:scale-95 rounded-xl text-orange-950 text-xs font-bold transition-all shadow-xs"
                 >
                   <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
-                  <span className="max-w-[80px] truncate text-[0.7rem]">{location}</span>
+                  <span className="max-w-[120px] truncate text-xs font-bold">{location}</span>
                   <ChevronDown className="w-3 h-3 text-orange-500 shrink-0" />
                 </button>
               </div>
@@ -533,7 +533,7 @@ export default function Header({ user }: HeaderProps) {
                   <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-gray-900 font-bold rounded-xl" asChild>
                     <Link href="/login">Login</Link>
                   </Button>
-                  <Button size="sm" className="bg-[#1A1A1A] hover:bg-orange-600 text-white font-bold px-4 sm:px-6 rounded-xl shadow-lg transition-all" asChild>
+                  <Button size="sm" className="hidden sm:inline-flex bg-[#1A1A1A] hover:bg-orange-600 text-white font-bold px-4 sm:px-6 rounded-xl shadow-lg transition-all" asChild>
                     <Link href="/register">Join Now</Link>
                   </Button>
                 </div>
