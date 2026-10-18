@@ -1,40 +1,33 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
-import { WEEKDAYS } from '@/lib/pricing/order-pricing';
 import {
-  PLAN_LENGTH_DAYS,
   PLAN_TYPES,
   SUBSCRIPTION_MEAL_TYPES,
   calculateSubscriptionPricing,
   type PlanType,
 } from '@/lib/pricing/subscription-pricing';
+import {
+  isValidPlanStart,
+  normalizeDeliveryDays,
+  planDates,
+  planEndDate,
+} from '@/lib/pricing/plan-schedule';
+import { sanitizeDeliveryAddress } from '@/lib/utils/address';
 import { NextResponse } from 'next/server';
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_START_DAYS_AHEAD = 30;
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().split('T')[0];
-}
-
-function isValidStartDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return false;
-  const start = new Date(`${value}T00:00:00Z`).getTime();
-  if (!Number.isFinite(start)) return false;
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const dayMs = 24 * 60 * 60 * 1000;
-  return start >= today.getTime() - dayMs && start <= today.getTime() + MAX_START_DAYS_AHEAD * dayMs;
+function buildDeliveries(dates: string[]) {
+  return dates.map((date) => ({ date, status: 'scheduled', order_id: null }));
 }
 
 /**
- * Creates a subscription. Price, payment status and end date are decided
- * here, never taken from the request:
- * - from checkout (`order_id`): price and payment status come from that order
- *   (one subscription per order);
- * - standalone: price from the plan table, payment status 'pending'.
+ * Creates a subscription. Schedule, price, payment status and status are
+ * decided here, never taken from the request.
+ *
+ * - From checkout (`order_id`): start date, delivery days and time come from
+ *   the order item that was paid for, and the scheduled meal count must match
+ *   what the order charged. Active once the order is paid (or confirmed COD).
+ * - Standalone: priced from the plan table by the number of scheduled meals;
+ *   it waits in 'pending_payment' until paid.
  */
 export async function POST(request: Request) {
   const auth = await requireUser();
@@ -42,36 +35,29 @@ export async function POST(request: Request) {
   const user = auth.user;
 
   try {
-    const body = await request.json();
-    const { order_id, meal_type, start_date, delivery_days, delivery_time, address, auto_renew } = body ?? {};
+    const body = await request.json().catch(() => ({}));
+    const { order_id, auto_renew } = body ?? {};
 
-    const days: string[] = Array.isArray(delivery_days)
-      ? Array.from(new Set(delivery_days.map(String)))
-      : [];
-
-    if (
-      !SUBSCRIPTION_MEAL_TYPES.includes(meal_type) ||
-      !isValidStartDate(start_date) ||
-      days.length === 0 ||
-      !days.every((d) => (WEEKDAYS as readonly string[]).includes(d)) ||
-      typeof delivery_time !== 'string' ||
-      !delivery_time ||
-      !address ||
-      typeof address !== 'object'
-    ) {
-      return NextResponse.json({ error: 'Missing or invalid fields' }, { status: 400 });
+    const address = sanitizeDeliveryAddress(body?.address);
+    if (!address) {
+      return NextResponse.json({ error: 'A valid delivery address is required' }, { status: 400 });
     }
 
     const serviceClient = createServiceClient();
     let planType: PlanType;
     let vendorId: string;
     let price: number;
+    let startDate: string;
+    let days: string[];
+    let deliveryTime: string;
+    let mealType: string;
     let paymentStatus: 'paid' | 'pending' = 'pending';
+    let status: 'active' | 'pending_payment' = 'pending_payment';
 
     if (order_id) {
       const { data: order } = await serviceClient
         .from('orders')
-        .select('id, customer_id, vendor_id, items, total, status, payment_status')
+        .select('id, customer_id, vendor_id, items, total, status, payment_status, payment_method')
         .eq('id', order_id)
         .eq('customer_id', user.id)
         .maybeSingle();
@@ -88,16 +74,71 @@ export async function POST(request: Request) {
       }
 
       planType = subItem.subscription_type;
-      vendorId = order.vendor_id;
+      vendorId = order.vendor_id as string;
       price = Number(order.total);
+      // The plan the customer paid for, not what the browser sends now.
+      days = normalizeDeliveryDays(subItem.delivery_days);
+      deliveryTime = typeof subItem.delivery_time === 'string' && subItem.delivery_time
+        ? subItem.delivery_time.slice(0, 16)
+        : '12:30 PM';
+      // Older orders (before plan_start_date existed) fall back to a validated body date.
+      startDate = subItem.plan_start_date || body?.start_date;
+      if (!isValidPlanStart(startDate) && !subItem.plan_start_date) {
+        return NextResponse.json({ error: 'Invalid start date' }, { status: 400 });
+      }
+
+      const { data: meal } = await serviceClient
+        .from('meals')
+        .select('meal_type')
+        .eq('id', subItem.meal_id)
+        .maybeSingle();
+      mealType = (SUBSCRIPTION_MEAL_TYPES as readonly string[]).includes(meal?.meal_type as string)
+        ? (meal!.meal_type as string)
+        : 'lunch';
+
+      const dates = planDates(planType, startDate, days);
+      if (typeof subItem.meal_count === 'number' && subItem.meal_count !== dates.length) {
+        return NextResponse.json(
+          { error: 'Plan schedule does not match the order. Please contact support.' },
+          { status: 409 }
+        );
+      }
+
       paymentStatus = order.payment_status === 'paid' ? 'paid' : 'pending';
+      // Cash plans are paid at the door; they start once the kitchen has the order.
+      const cashConfirmed = order.payment_method === 'cash' && order.status !== 'pending';
+      status = paymentStatus === 'paid' || cashConfirmed ? 'active' : 'pending_payment';
     } else {
       if (!PLAN_TYPES.includes(body?.plan_type) || typeof body?.vendor_id !== 'string') {
         return NextResponse.json({ error: 'Missing or invalid fields' }, { status: 400 });
       }
+      if (!(SUBSCRIPTION_MEAL_TYPES as readonly string[]).includes(body?.meal_type)) {
+        return NextResponse.json({ error: 'Invalid meal type' }, { status: 400 });
+      }
+      if (!isValidPlanStart(body?.start_date)) {
+        return NextResponse.json(
+          { error: 'Start date must be between tomorrow and 30 days from today' },
+          { status: 400 }
+        );
+      }
+      if (typeof body?.delivery_time !== 'string' || !body.delivery_time) {
+        return NextResponse.json({ error: 'Delivery time is required' }, { status: 400 });
+      }
       planType = body.plan_type;
       vendorId = body.vendor_id;
-      price = calculateSubscriptionPricing(planType, meal_type, days.length).finalPrice;
+      mealType = body.meal_type;
+      startDate = body.start_date;
+      days = normalizeDeliveryDays(body?.delivery_days);
+      deliveryTime = body.delivery_time.slice(0, 16);
+      price = calculateSubscriptionPricing(planType, mealType, days, startDate).finalPrice;
+    }
+
+    const dates = planDates(planType, startDate, days);
+    if (dates.length === 0) {
+      return NextResponse.json(
+        { error: 'No deliveries fall in this plan. Choose other delivery days or another start date.' },
+        { status: 400 }
+      );
     }
 
     const { data: vendor } = await serviceClient
@@ -109,9 +150,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This kitchen is not accepting subscriptions' }, { status: 409 });
     }
 
-    const endDate = addDays(start_date, PLAN_LENGTH_DAYS[planType]);
-    const deliveries = generateDeliverySchedule(start_date, endDate, days);
-
     const { data: subscription, error } = await serviceClient
       .from('subscriptions')
       .insert({
@@ -119,18 +157,18 @@ export async function POST(request: Request) {
         vendor_id: vendorId,
         order_id: order_id || null,
         plan_type: planType,
-        meal_type,
-        start_date,
-        end_date: endDate,
+        meal_type: mealType,
+        start_date: startDate,
+        end_date: planEndDate(planType, startDate),
         delivery_days: days,
-        delivery_time: delivery_time.slice(0, 16),
+        delivery_time: deliveryTime,
         address,
         price,
-        status: 'active',
+        status,
         payment_status: paymentStatus,
         auto_renew: auto_renew === true,
-        deliveries,
-      })
+        deliveries: buildDeliveries(dates),
+      } as any)
       .select()
       .single();
 
@@ -139,23 +177,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'A subscription already exists for this order' }, { status: 409 });
       }
       console.error('Error creating subscription:', error);
-      return NextResponse.json(
-        { error: 'Failed to create subscription' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Failed to create subscription' }, { status: 500 });
     }
 
     return NextResponse.json(subscription, { status: 201 });
   } catch (error) {
     console.error('Error in POST /api/subscriptions:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const supabase = await createClient();
     const {
@@ -184,56 +216,12 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('Error fetching subscriptions:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch subscriptions' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Failed to fetch subscriptions' }, { status: 500 });
     }
 
     return NextResponse.json(subscriptions);
   } catch (error) {
     console.error('Error in GET /api/subscriptions:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-// Helper function to generate delivery schedule
-function generateDeliverySchedule(
-  startDate: string,
-  endDate: string,
-  deliveryDays: string[]
-): any[] {
-  const deliveries = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const current = new Date(start);
-
-  const dayMap: { [key: string]: number } = {
-    sunday: 0,
-    monday: 1,
-    tuesday: 2,
-    wednesday: 3,
-    thursday: 4,
-    friday: 5,
-    saturday: 6,
-  };
-
-  const selectedDayNumbers = deliveryDays.map((day) => dayMap[day.toLowerCase()]);
-
-  while (current <= end) {
-    const dayOfWeek = current.getDay();
-    if (selectedDayNumbers.includes(dayOfWeek)) {
-      deliveries.push({
-        date: current.toISOString().split('T')[0],
-        status: 'scheduled',
-        order_id: null,
-      });
-    }
-    current.setDate(current.getDate() + 1);
-  }
-
-  return deliveries;
 }

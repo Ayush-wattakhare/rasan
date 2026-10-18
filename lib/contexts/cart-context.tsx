@@ -1,16 +1,38 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  ReactNode,
+} from 'react';
+import { isValidPlanStart } from '@/lib/pricing/plan-schedule';
 import type { CartItem, Cart, SubscriptionType } from '@/types';
 
 const CART_STORAGE_KEY = 'rasan_cart';
 import {
+  DEFAULT_DELIVERY_DAYS,
   DELIVERY_FEE,
   PLATFORM_FEE,
   SUBSCRIPTION_DISCOUNT_PCT,
   calculateCartTotals,
   getItemPricing,
 } from '@/lib/pricing/order-pricing';
+
+const EMPTY_CART: Cart = {
+  items: [],
+  vendor_id: undefined,
+  subtotal: 0,
+  base_subtotal: 0,
+  total_savings: 0,
+  platform_fee: PLATFORM_FEE,
+  delivery_fee: DELIVERY_FEE,
+  total: 0,
+};
 
 export { getItemPricing };
 
@@ -40,17 +62,19 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState<Cart>({
-    items: [],
-    vendor_id: undefined,
-    subtotal: 0,
-    base_subtotal: 0,
-    total_savings: 0,
-    platform_fee: PLATFORM_FEE,
-    delivery_fee: DELIVERY_FEE,
-    total: 0,
-  });
+  const [cart, setCartState] = useState<Cart>(EMPTY_CART);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Always-current cart for synchronous checks (addItem's vendor conflict),
+  // so two quick adds can't both read a stale closure.
+  const cartRef = useRef<Cart>(EMPTY_CART);
+  // Every cart update goes through here and is applied to the ref synchronously,
+  // so the ref is always the latest cart even before React re-renders.
+  const setCart = useCallback((next: Cart | ((prev: Cart) => Cart)) => {
+    const value = typeof next === 'function' ? (next as (p: Cart) => Cart)(cartRef.current) : next;
+    cartRef.current = value;
+    setCartState(value);
+  }, []);
 
   const calculateTotals = useCallback((items: CartItem[]) => {
     const { base_subtotal, total_savings, subtotal, total } = calculateCartTotals(items);
@@ -72,12 +96,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
             ...item,
             price: Math.round(Number(item.price) || 0),
             subscription_type: subType,
+            // Same default as addItem, so a reload never changes the price.
             delivery_days:
               item.delivery_days && item.delivery_days.length > 0
                 ? item.delivery_days
-                : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-            delivery_time: item.delivery_time || '12:00 PM',
+                : [...DEFAULT_DELIVERY_DAYS],
+            delivery_time: item.delivery_time || '12:30 PM',
             discount_percentage: discountPct,
+            // A start date saved days ago may now be in the past: fall back to tomorrow.
+            plan_start_date: isValidPlanStart(item.plan_start_date) ? item.plan_start_date : undefined,
           };
         });
 
@@ -87,7 +114,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
           ...parsedCart,
           items: sanitizedItems,
           platform_fee: PLATFORM_FEE,
-          delivery_fee: parsedCart.delivery_fee ?? DELIVERY_FEE,
+          // Never trust a stored fee; the server charges DELIVERY_FEE.
+          delivery_fee: DELIVERY_FEE,
           base_subtotal: totals.base_subtotal,
           total_savings: totals.total_savings,
           subtotal: totals.subtotal,
@@ -99,7 +127,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [calculateTotals]);
+  }, [calculateTotals, setCart]);
 
   // Save cart to localStorage whenever it changes
   useEffect(() => {
@@ -117,7 +145,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const fullItem: CartItem = {
         quantity: 1,
         subscription_type: 'one-time',
-        delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        delivery_days: [...DEFAULT_DELIVERY_DAYS],
         delivery_time: '12:30 PM',
         discount_percentage: 0,
         ...item,
@@ -133,7 +161,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         ...totals,
       });
     },
-    [calculateTotals]
+    [calculateTotals, setCart]
   );
 
   const addItem = useCallback(
@@ -144,20 +172,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const fullItem: CartItem = {
         quantity: 1,
         subscription_type: 'one-time',
-        delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        delivery_days: [...DEFAULT_DELIVERY_DAYS],
         delivery_time: '12:30 PM',
         discount_percentage: 0,
         ...item,
         price: Math.round(Number(item.price) || 0),
       } as CartItem;
 
-      // 1. Check for vendor conflict synchronously
-      if (cart.items.length > 0 && cart.vendor_id && cart.vendor_id !== fullItem.vendor_id) {
+      // 1. Check for vendor conflict synchronously against the latest cart.
+      const current = cartRef.current;
+      if (current.items.length > 0 && current.vendor_id && current.vendor_id !== fullItem.vendor_id) {
         if (options?.replaceIfConflict) {
           clearAndAddItem(fullItem);
           return { success: true, conflict: false };
         }
-        return { success: false, conflict: true, currentVendorId: cart.vendor_id };
+        return { success: false, conflict: true, currentVendorId: current.vendor_id };
       }
 
       // 2. Safe state update (never throw inside React state updater)
@@ -202,7 +231,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       return { success: true, conflict: false };
     },
-    [cart, calculateTotals, clearAndAddItem]
+    [calculateTotals, clearAndAddItem, setCart]
   );
 
   const updateQuantity = useCallback(
@@ -235,7 +264,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [calculateTotals]
+    [calculateTotals, setCart]
   );
 
   const updateItemOptions = useCallback(
@@ -268,7 +297,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [calculateTotals]
+    [calculateTotals, setCart]
   );
 
   const removeItem = useCallback(
@@ -286,39 +315,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [calculateTotals]
+    [calculateTotals, setCart]
   );
 
   const clearCart = useCallback(() => {
-    setCart({
-      items: [],
-      vendor_id: undefined,
-      subtotal: 0,
-      platform_fee: PLATFORM_FEE,
-      delivery_fee: DELIVERY_FEE,
-      total: 0,
-    });
-  }, []);
+    setCart({ ...EMPTY_CART });
+  }, [setCart]);
 
   const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
 
-  return (
-    <CartContext.Provider
-      value={{
-        cart,
-        addItem,
-        clearAndAddItem,
-        updateQuantity,
-        updateItemOptions,
-        removeItem,
-        clearCart,
-        itemCount,
-        isLoading,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+  // Memoized so consumers (and memo(MealCard)) only re-render when something changed.
+  const value = useMemo(
+    () => ({
+      cart,
+      addItem,
+      clearAndAddItem,
+      updateQuantity,
+      updateItemOptions,
+      removeItem,
+      clearCart,
+      itemCount,
+      isLoading,
+    }),
+    [cart, addItem, clearAndAddItem, updateQuantity, updateItemOptions, removeItem, clearCart, itemCount, isLoading]
   );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCartContext(): CartContextType {

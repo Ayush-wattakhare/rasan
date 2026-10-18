@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { parsePageParam } from '@/lib/utils/search';
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -21,13 +23,22 @@ export default async function VendorsPage({ searchParams }: PageProps) {
     search: typeof params.search === 'string' ? params.search : undefined,
   };
 
-  const page = typeof params.page === 'string' ? parseInt(params.page) : 1;
+  const page = parsePageParam(params.page);
   const limit = 12;
 
   const [vendorsResult, cuisineTypes] = await Promise.all([
     getVendors(supabase, filters, page, limit),
     getCuisineTypes(supabase),
   ]);
+
+  // A page past the end: go back to the first page of the same search.
+  if (page > 1 && vendorsResult.vendors.length === 0) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key !== 'page' && typeof value === 'string') qs.set(key, value);
+    }
+    redirect(qs.toString() ? `/vendors?${qs}` : '/vendors');
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] pb-32">

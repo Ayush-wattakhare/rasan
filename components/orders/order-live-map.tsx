@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { parsePointLocation } from '@/lib/utils/geo';
 
 interface LatLng { lat: number; lng: number }
 
@@ -40,10 +41,14 @@ export default function OrderLiveMap({
   const riderMarkerRef = useRef<any>(null);
   const animRef = useRef<number | null>(null);
 
+  const leafletRef = useRef<any>(null);
+  const riderIconFactoryRef = useRef<(() => any) | null>(null);
+  const hasFittedRiderRef = useRef(false);
+
   const [riderPos, setRiderPos] = useState<LatLng | null>(initialRiderLocation || null);
   const [loaded, setLoaded] = useState(false);
-  const [lastSync, setLastSync] = useState<Date>(new Date());
-  const supabase = createClient();
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const supabase = useMemo(() => createClient(), []);
 
   // -- Fallback HTTP polling for rider location --------------------------------
   useEffect(() => {
@@ -54,17 +59,18 @@ export default function OrderLiveMap({
         const res = await fetch(`/api/delivery-partners/${deliveryPartnerId}/location`);
         if (res.ok) {
           const data = await res.json();
-          if (data?.lat && data?.lng) {
+          if (typeof data?.lat === 'number' && typeof data?.lng === 'number') {
             setRiderPos({ lat: data.lat, lng: data.lng });
-            setLastSync(new Date());
+            setLastSync(data.updated_at ? new Date(data.updated_at) : new Date());
           }
         }
-      } catch (err) {
-        // Silently handle fallback error
+      } catch {
+        // Polling is a fallback for realtime; ignore transient errors.
       }
     };
 
-    const interval = setInterval(fetchLatestLocation, 5000);
+    fetchLatestLocation();
+    const interval = setInterval(fetchLatestLocation, 10000);
     return () => clearInterval(interval);
   }, [deliveryPartnerId]);
 
@@ -83,9 +89,10 @@ export default function OrderLiveMap({
           filter: `id=eq.${deliveryPartnerId}`,
         },
         (payload) => {
-          const newData = payload.new as any;
-          if (newData?.current_lat && newData?.current_lng) {
-            setRiderPos({ lat: newData.current_lat, lng: newData.current_lng });
+          // The table stores `current_location` (GEOGRAPHY → hex EWKB in payloads).
+          const coords = parsePointLocation((payload.new as any)?.current_location);
+          if (coords) {
+            setRiderPos(coords);
             setLastSync(new Date());
           }
         }
@@ -110,7 +117,16 @@ export default function OrderLiveMap({
 
   // -- Update rider marker with smooth animation -------------------------------
   useEffect(() => {
-    if (!mapRef.current || !riderMarkerRef.current || !riderPos) return;
+    if (!loaded || !mapRef.current || !riderPos) return;
+
+    // First real fix: create the rider marker exactly there (no animation).
+    if (!riderMarkerRef.current) {
+      const L = leafletRef.current;
+      if (!L || !riderIconFactoryRef.current) return;
+      riderMarkerRef.current = L.marker([riderPos.lat, riderPos.lng], { icon: riderIconFactoryRef.current() })
+        .addTo(mapRef.current)
+        .bindPopup('<b style="color:#4f46e5">🛵 Your Rider</b><br><small>En route with your order!</small>');
+    }
 
     const marker = riderMarkerRef.current;
     const startLatLng = marker.getLatLng();
@@ -130,8 +146,9 @@ export default function OrderLiveMap({
 
       if (progress < 1) {
         animRef.current = requestAnimationFrame(animateStep);
-      } else {
-        // Auto-fit bounds when updated
+      } else if (!hasFittedRiderRef.current) {
+        // Fit everything into view once; after that, respect the user's pan/zoom.
+        hasFittedRiderRef.current = true;
         const points: [number, number][] = [];
         if (vendorLocation) points.push([vendorLocation.lat, vendorLocation.lng]);
         if (deliveryLocation) points.push([deliveryLocation.lat, deliveryLocation.lng]);
@@ -149,7 +166,7 @@ export default function OrderLiveMap({
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [riderPos, vendorLocation, deliveryLocation]);
+  }, [loaded, riderPos, vendorLocation, deliveryLocation]);
 
   // -- Initialize Leaflet map (client-only, after mount) ------------------------
   useEffect(() => {
@@ -185,7 +202,7 @@ export default function OrderLiveMap({
         const vendorIcon = L.divIcon({
           className: '',
           html: `
-            <div style="transform:translate(-50%,-100%);text-align:center;">
+            <div style="width:100px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center;">
               <div style="background:#1A1A1A;color:white;font-size:9px;font-weight:900;padding:3px 9px;border-radius:14px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,0.3);margin-bottom:5px;border:1px solid rgba(255,255,255,0.15);letter-spacing:0.06em;">🍳 Kitchen</div>
               <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ff5200,#e04400);border:3px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(255,82,0,0.55);margin:0 auto;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -195,8 +212,9 @@ export default function OrderLiveMap({
                 </svg>
               </div>
             </div>`,
-          iconSize: [38, 38],
-          iconAnchor: [19, 55],
+          // Bottom-centre of the round badge marks the kitchen.
+          iconSize: [100, 64],
+          iconAnchor: [50, 64],
         });
         L.marker([vendorLocation.lat, vendorLocation.lng], { icon: vendorIcon })
           .addTo(map)
@@ -208,7 +226,7 @@ export default function OrderLiveMap({
         const customerIcon = L.divIcon({
           className: '',
           html: `
-            <div style="transform:translate(-50%,-100%);text-align:center;">
+            <div style="width:100px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center;">
               <div style="background:#15803d;color:white;font-size:9px;font-weight:900;padding:3px 9px;border-radius:14px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,0.2);margin-bottom:5px;border:1px solid rgba(255,255,255,0.2);letter-spacing:0.06em;">🏠 Your Place</div>
               <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#15803d);border:3px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(34,197,94,0.55);margin:0 auto;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -217,8 +235,8 @@ export default function OrderLiveMap({
                 </svg>
               </div>
             </div>`,
-          iconSize: [38, 38],
-          iconAnchor: [19, 55],
+          iconSize: [100, 64],
+          iconAnchor: [50, 64],
         });
         L.marker([deliveryLocation.lat, deliveryLocation.lng], { icon: customerIcon })
           .addTo(map)
@@ -238,13 +256,12 @@ export default function OrderLiveMap({
         ], { padding: [60, 60] });
       }
 
-      // -- Rider Pin — Swiggy Blue Scooter with Radar Glow Pulse ---------------
-      const riderStart = riderPos || vendorLocation || null;
-      if (riderStart) {
-        const riderIcon = L.divIcon({
+      // -- Rider Pin — only once we have a real rider position ------------------
+      riderIconFactoryRef.current = () =>
+        L.divIcon({
           className: '',
           html: `
-            <div style="transform:translate(-50%,-50%);position:relative;">
+            <div style="width:46px;height:46px;position:relative;">
               <div style="position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:#4f46e5;color:white;font-size:9px;font-weight:900;padding:3px 9px;border-radius:12px;white-space:nowrap;box-shadow:0 4px 12px rgba(79,70,229,0.5);letter-spacing:0.04em;">⚡ On the way!</div>
               <div style="width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#4338ca);border:3.5px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 0 rgba(99,102,241,0.7);animation:swiggyRiderPulse 1.8s ease-in-out infinite;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -256,16 +273,13 @@ export default function OrderLiveMap({
               </div>
               <style>@keyframes swiggyRiderPulse{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.75),0 8px 24px rgba(99,102,241,0.5)}70%{box-shadow:0 0 0 14px rgba(99,102,241,0),0 8px 24px rgba(99,102,241,0.4)}100%{box-shadow:0 0 0 0 rgba(99,102,241,0),0 8px 24px rgba(99,102,241,0.4)}}</style>
             </div>`,
+          // Centre of the circle is the rider's position.
           iconSize: [46, 46],
           iconAnchor: [23, 23],
         });
-        const riderMarker = L.marker([riderStart.lat, riderStart.lng], { icon: riderIcon })
-          .addTo(map)
-          .bindPopup('<b style="color:#4f46e5">🛵 Your Rider</b><br><small>En route with your order!</small>');
-        riderMarkerRef.current = riderMarker;
-      }
 
       mapRef.current = map;
+      leafletRef.current = L;
       setLoaded(true);
     })();
 
@@ -286,11 +300,15 @@ export default function OrderLiveMap({
       {loaded && (
         <div className="absolute top-3 right-3 z-[400] bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-100 px-4 py-3 space-y-1 min-w-[160px]">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-            <span className="text-[0.55rem] font-black text-gray-400 uppercase tracking-widest">Live GPS</span>
-            <span className="ml-auto text-[0.5rem] font-bold text-gray-300">
-              {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            <span className={`w-2 h-2 rounded-full ${lastSync ? 'bg-green-500 animate-ping' : 'bg-gray-300'}`} />
+            <span className="text-[0.55rem] font-black text-gray-400 uppercase tracking-widest">
+              {lastSync ? 'Live GPS' : riderPos ? 'Last known' : 'Waiting for rider'}
             </span>
+            {lastSync && (
+              <span className="ml-auto text-[0.5rem] font-bold text-gray-300">
+                {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
           </div>
           {etaMins !== null && (
             <div>

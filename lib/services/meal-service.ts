@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { PUBLIC_VENDOR_COLUMNS } from '@/lib/supabase/public-columns';
 import type { Database } from '@/types/database.types';
 import type { MealType } from '@/types';
+import { sanitizeSearch } from '@/lib/utils/search';
 
 type SupabaseClientType = SupabaseClient<Database>;
 
@@ -18,6 +19,8 @@ export interface MealFilters {
   maxPrice?: number;
   vendorId?: string;
   search?: string;
+  /** Matches the kitchen's cuisine list (vendors.cuisine). */
+  cuisine?: string;
   sortBy?: 'price_asc' | 'price_desc' | 'rating' | 'popularity';
 }
 
@@ -32,7 +35,7 @@ export async function getMeals(
 ) {
   let query = supabase
     .from('meals')
-    .select('*, vendors!inner(id, business_name, rating, is_active)', { count: 'exact' })
+    .select('*, vendors!inner(id, business_name, rating, is_active, cuisine)', { count: 'exact' })
     .eq('is_available', true)
     .eq('vendors.is_active', true)
     .not('vendors.business_name', 'ilike', '%test%');
@@ -62,10 +65,13 @@ export async function getMeals(
     query = query.eq('vendor_id', filters.vendorId);
   }
 
-  if (filters.search) {
-    query = query.or(
-      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
-    );
+  if (filters.cuisine) {
+    query = query.contains('vendors.cuisine', [filters.cuisine]);
+  }
+
+  const search = sanitizeSearch(filters.search);
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
   }
 
   // Apply sorting
@@ -86,7 +92,8 @@ export async function getMeals(
       query = query.order('created_at', { ascending: false });
   }
 
-  // Apply pagination
+  // Apply pagination (page is clamped to >= 1 by the caller)
+  page = Math.max(1, Math.floor(page) || 1);
   const from = (page - 1) * limit;
   const to = from + limit - 1;
   query = query.range(from, to);

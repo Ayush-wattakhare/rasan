@@ -50,7 +50,7 @@ export default async function CustomerLayout({
       await serviceClient.from('profiles').upsert(
         {
           id: user.id,
-          email: user.email || '',
+          email: user.email || null,
           name: fullName,
           role: 'customer',
           is_active: true,

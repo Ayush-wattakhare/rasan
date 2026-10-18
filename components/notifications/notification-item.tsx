@@ -18,11 +18,13 @@ export default function NotificationItem({ notification }: NotificationItemProps
     setIsRead(true);
 
     try {
-      await fetch(`/api/notifications/${notification.id}/read`, {
+      const res = await fetch(`/api/notifications/${notification.id}/read`, {
         method: 'POST',
       });
-    } catch (err) {
-      console.warn('Error marking notification read:', err);
+      // Show it as unread again if the server didn't save it.
+      if (!res.ok) setIsRead(false);
+    } catch {
+      setIsRead(false);
     }
   };
 

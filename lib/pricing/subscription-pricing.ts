@@ -1,7 +1,14 @@
 /**
  * Standalone subscription plan pricing, shared by the subscription dialog and
  * POST /api/subscriptions (which never trusts a client-sent price).
+ *
+ * Price follows the number of scheduled meals (plan-schedule.ts).
  */
+import {
+  PLAN_LENGTH_DAYS as SCHEDULE_LENGTH_DAYS,
+  defaultPlanStart,
+  planMealCount,
+} from '@/lib/pricing/plan-schedule';
 
 export type PlanType = 'daily' | 'weekly' | 'monthly';
 
@@ -15,39 +22,35 @@ const BASE_MEAL_PRICES: Record<string, number> = {
   all: 350,
 };
 
-/** Length of each plan in days (end_date = start_date + this). */
-export const PLAN_LENGTH_DAYS: Record<PlanType, number> = {
-  daily: 1,
-  weekly: 7,
+const PLAN_DISCOUNT_PCT: Record<PlanType, number> = {
+  daily: 0,
+  weekly: 20,
   monthly: 30,
 };
+
+/** Length of each plan in calendar days, inclusive of the start date. */
+export const PLAN_LENGTH_DAYS: Record<PlanType, number> = SCHEDULE_LENGTH_DAYS;
 
 export function calculateSubscriptionPricing(
   planType: string,
   mealType: string,
-  deliveryDaysCount: number
+  deliveryDays: string[],
+  startDate: string = defaultPlanStart()
 ) {
-  const days = Math.max(1, deliveryDaysCount);
+  const plan: PlanType = (PLAN_TYPES as readonly string[]).includes(planType) ? (planType as PlanType) : 'daily';
   const basePerMeal = BASE_MEAL_PRICES[mealType] || 150;
+  const mealCount = planMealCount(plan, startDate, deliveryDays);
+  const discountPct = PLAN_DISCOUNT_PCT[plan];
 
-  let multiplier = 1;
-  let discountPct = 0;
-
-  if (planType === 'weekly') {
-    discountPct = 20; // 20% discount for weekly
-    multiplier = days;
-  } else if (planType === 'monthly') {
-    discountPct = 30; // 30% discount for monthly
-    multiplier = days * 4;
-  }
-
-  const basePrice = basePerMeal * multiplier;
+  const basePrice = basePerMeal * mealCount;
   const savings = Math.round((basePrice * discountPct) / 100);
   const finalPrice = Math.max(0, basePrice - savings);
 
   return {
-    days,
-    multiplier,
+    days: deliveryDays.length,
+    /** Number of meals the plan delivers (kept as `multiplier` for existing callers). */
+    multiplier: mealCount,
+    mealCount,
     basePerMeal,
     basePrice,
     savings,

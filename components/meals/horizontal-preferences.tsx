@@ -30,7 +30,11 @@ export default function HorizontalPreferences({ categories }: HorizontalPreferen
     } else {
       params.set(key, value.toString());
     }
-    params.set('page', '1');
+    params.delete('page');
+    // Old links may still carry params that no longer exist.
+    params.delete('isJain');
+    params.delete('isVeg');
+    params.delete('mealSlot');
     startTransition(() => {
       router.push(`/meals?${params.toString()}`, { scroll: false });
     });
@@ -85,12 +89,14 @@ export default function HorizontalPreferences({ categories }: HorizontalPreferen
               { id: 'snack', label: 'Snack', icon: Popcorn },
             ].map((slot) => {
               const Icon = slot.icon;
-              const isSelected = (searchParams.get('mealSlot') || 'all') === slot.id;
+              const isSelected = (searchParams.get('mealType') || 'all') === slot.id;
               
               return (
                 <button
                   key={slot.id}
-                  onClick={() => handleFilterChange('mealSlot', slot.id)}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => handleFilterChange('mealType', slot.id)}
                   className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-[0.6rem] sm:text-[0.65rem] uppercase tracking-wider transition-all duration-300 shrink-0 cursor-pointer ${
                     isSelected 
                       ? 'bg-[#1A1A1A] text-white shadow-md shadow-black/10 scale-100' 
@@ -104,33 +110,17 @@ export default function HorizontalPreferences({ categories }: HorizontalPreferen
             })}
           </div>
 
-          {/* Quick Dietary Toggles */}
+          {/* Pure Veg Toggle (Jain filter removed: there is no Jain data in the database) */}
           <div className="flex items-center gap-2 sm:gap-3 bg-gray-50/80 p-1.5 px-3 rounded-xl sm:rounded-2xl border border-gray-100/80">
-            {/* Pure Veg Toggle */}
             <div className="flex items-center gap-2">
               <Switch
                 id="pref-pure-veg"
-                checked={searchParams.get('isVeg') === 'true'}
-                onCheckedChange={(checked) => handleFilterChange('isVeg', checked)}
+                checked={searchParams.get('isVegetarian') === 'true'}
+                onCheckedChange={(checked) => handleFilterChange('isVegetarian', checked)}
                 className="data-[state=checked]:bg-emerald-600 scale-75 sm:scale-90"
               />
               <Label htmlFor="pref-pure-veg" className="text-[0.6rem] sm:text-[0.65rem] font-black uppercase tracking-wider text-gray-700 cursor-pointer select-none">
                 Pure Veg
-              </Label>
-            </div>
-
-            <div className="w-[1px] h-3 sm:h-4 bg-gray-200"></div>
-
-            {/* Jain Toggle */}
-            <div className="flex items-center gap-2">
-              <Switch
-                id="pref-jain"
-                checked={searchParams.get('isJain') === 'true'}
-                onCheckedChange={(checked) => handleFilterChange('isJain', checked)}
-                className="data-[state=checked]:bg-green-700 scale-75 sm:scale-90"
-              />
-              <Label htmlFor="pref-jain" className="text-[0.6rem] sm:text-[0.65rem] font-black uppercase tracking-wider text-gray-700 cursor-pointer select-none">
-                Jain
               </Label>
             </div>
           </div>

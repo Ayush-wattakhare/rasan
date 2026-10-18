@@ -26,8 +26,18 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
 
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
 
-    // Fetch initial notifications
+    // The badge counts every unread notification, not just the 5 shown.
+    const refreshUnreadCount = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+      if (active && typeof count === 'number') setUnreadCount(count);
+    };
+
     const fetchNotifications = async () => {
       const { data } = await supabase
         .from('notifications')
@@ -36,45 +46,48 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.is_read).length);
-      }
-      setLoading(false);
+      if (active && data) setNotifications(data);
+      await refreshUnreadCount();
+      if (active) setLoading(false);
     };
 
     fetchNotifications();
 
-    // Subscribe to real-time updates
     const channel = supabase
-      .channel('notifications')
+      .channel(`notification-bell-${userId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
         (payload) => {
           const newNotification = payload.new as Notification;
           setNotifications((prev) => [newNotification, ...prev.slice(0, 4)]);
-          setUnreadCount((prev) => prev + 1);
+          refreshUnreadCount();
+        }
+      )
+      .on(
+        'postgres_changes',
+        // Marking read on /notifications (or another tab) updates the badge too.
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const updated = payload.new as Notification;
+          setNotifications((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+          refreshUnreadCount();
         }
       )
       .subscribe();
 
     return () => {
+      active = false;
       supabase.removeChannel(channel);
     };
   }, [userId]);
 
   const markAsRead = async (notificationId: string) => {
-    const supabase = createClient();
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', notificationId);
+    const res = await fetch(`/api/notifications/${notificationId}/read`, { method: 'POST' }).catch(
+      () => null
+    );
+    // Only change the badge once the server has saved it.
+    if (!res?.ok) return;
 
     setNotifications((prev) =>
       prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))

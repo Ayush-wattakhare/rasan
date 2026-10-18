@@ -131,18 +131,21 @@ export function useRiderLocationTracker({
       setError('Geolocation is not supported by your browser');
       return;
     }
+    // An offline rider's position is never broadcast.
+    if (!isOnline) return;
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        // handlePositionUpdate applies the throttle; a manual sync always sends once.
         handlePositionUpdate(pos);
-        sendLocationUpdate(pos.coords.latitude, pos.coords.longitude);
+        if (!isSyncingRef.current) sendLocationUpdate(pos.coords.latitude, pos.coords.longitude);
       },
       (err) => {
         setError(err.message || 'Unable to retrieve location');
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
-  }, [handlePositionUpdate, sendLocationUpdate]);
+  }, [handlePositionUpdate, sendLocationUpdate, isOnline]);
 
   useEffect(() => {
     if (

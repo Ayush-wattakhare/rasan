@@ -14,24 +14,14 @@ import {
 } from 'lucide-react';
 import { LocationSelectorModal } from '@/components/location/location-selector-modal';
 import { AccurateLocationResult } from '@/lib/hooks/use-location';
+// Placeholder sign-up point counts as "not configured" so the chef is prompted to pin it.
+import { parseVendorLocation as parsePostGISLocation } from '@/lib/utils/geo';
 
 interface VendorProfileFormProps {
   vendor: any;
 }
 
 const DAY_LABELS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-function parsePostGISLocation(loc: any): { lat: number; lng: number } | null {
-  if (!loc) return null;
-  if (typeof loc === 'object' && Array.isArray(loc.coordinates)) {
-    return { lng: Number(loc.coordinates[0]), lat: Number(loc.coordinates[1]) };
-  }
-  const match = String(loc).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/i);
-  if (match) {
-    return { lng: parseFloat(match[1]), lat: parseFloat(match[2]) };
-  }
-  return null;
-}
 
 export default function VendorProfileForm({ vendor }: VendorProfileFormProps) {
   const router = useRouter();

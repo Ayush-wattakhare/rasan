@@ -47,7 +47,7 @@ export default function Header({ user }: HeaderProps) {
   const [location, setLocation] = useState('Pimpri');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; price: number; rating: number | null; is_vegetarian: boolean }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; price: number; rating: number | null; is_veg: boolean | null }>>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -437,11 +437,17 @@ export default function Header({ user }: HeaderProps) {
                               className="flex items-center justify-between p-2.5 hover:bg-orange-50/60 rounded-xl transition-all group"
                             >
                               <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${meal.is_vegetarian ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span
+                                  role="img"
+                                  aria-label={meal.is_veg ? 'Vegetarian' : 'Non-vegetarian'}
+                                  className={`w-2 h-2 rounded-full ${meal.is_veg ? 'bg-green-500' : 'bg-red-500'}`}
+                                />
                                 <span className="font-bold text-sm text-gray-900 group-hover:text-orange-600 transition-colors">{meal.name}</span>
                               </div>
                               <div className="flex items-center gap-3">
-                                {meal.rating && <span className="text-xs text-amber-500 font-bold">★ {meal.rating.toFixed(1)}</span>}
+                                {Number(meal.rating) > 0 && (
+                                  <span className="text-xs text-amber-500 font-bold">★ {Number(meal.rating).toFixed(1)}</span>
+                                )}
                                 <span className="text-xs font-black text-gray-900">₹{meal.price}</span>
                               </div>
                             </Link>

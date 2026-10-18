@@ -48,19 +48,20 @@ export default function AddressManager({ profile }: AddressManagerProps) {
 
   const initialAddress = (profile.address as Address | null) || null;
 
-  const [formData, setFormData] = useState<Address>({
+  // Coordinates stay unset until the user detects GPS (never a placeholder point).
+  const [formData, setFormData] = useState<Omit<Address, 'coordinates'> & { coordinates?: Address['coordinates'] }>({
     house_no: initialAddress?.house_no || '',
     building_name: initialAddress?.building_name || '',
     street: initialAddress?.street || '',
     landmark: initialAddress?.landmark || '',
-    city: initialAddress?.city || 'Pimpri-Chinchwad',
-    state: initialAddress?.state || 'Maharashtra',
-    zip_code: initialAddress?.zip_code || '411017',
+    city: initialAddress?.city || '',
+    state: initialAddress?.state || '',
+    zip_code: initialAddress?.zip_code || '',
     tag: initialAddress?.tag || 'home',
     receiver_name: initialAddress?.receiver_name || profile.name || '',
     receiver_phone: initialAddress?.receiver_phone || profile.phone || '',
     delivery_instructions: initialAddress?.delivery_instructions || '',
-    coordinates: initialAddress?.coordinates || { lat: 18.6279, lng: 73.8009 },
+    coordinates: initialAddress?.coordinates,
   });
 
   const [hasCustomGps, setHasCustomGps] = useState(
@@ -72,14 +73,14 @@ export default function AddressManager({ profile }: AddressManagerProps) {
     setDetectingLocation(true);
     setError(null);
     try {
-      const loc = await getAccurateLocation();
+      const loc = await getAccurateLocation({ persist: false });
       setFormData((prev) => ({
         ...prev,
-        street: loc.details.street || loc.details.full_address || loc.details.locality || prev.street || 'Main Road',
+        street: loc.details.street || loc.details.locality || loc.details.full_address || prev.street,
         building_name: prev.building_name || loc.details.building || '',
-        city: loc.details.city || prev.city || 'Pimpri-Chinchwad',
-        state: loc.details.state || prev.state || 'Maharashtra',
-        zip_code: loc.details.zip_code || prev.zip_code || '411017',
+        city: loc.details.city || prev.city,
+        state: loc.details.state || prev.state,
+        zip_code: loc.details.zip_code || prev.zip_code,
         coordinates: {
           lat: loc.lat,
           lng: loc.lng,
@@ -119,17 +120,15 @@ export default function AddressManager({ profile }: AddressManagerProps) {
       [formData.house_no, formData.building_name, formData.landmark].filter(Boolean).join(', ') || 
       'Main Road';
 
-    // Safe coordinates fallback if not already provided
-    const safeCoordinates = formData.coordinates?.lat && formData.coordinates?.lng
-      ? formData.coordinates
-      : { lat: 18.6279, lng: 73.8009 };
-
-    const payload: Address = {
-      ...formData,
+    // Never save made-up coordinates: riders and the distance check rely on them.
+    const hasCoords = !!(formData.coordinates?.lat && formData.coordinates?.lng);
+    const { coordinates, ...rest } = formData;
+    const payload = {
+      ...rest,
       street: fullStreetAddress,
       zip_code: cleanZip,
-      coordinates: safeCoordinates,
-    };
+      ...(hasCoords ? { coordinates } : {}),
+    } as Address;
 
     try {
       const response = await fetch('/api/profile', {
@@ -235,7 +234,7 @@ export default function AddressManager({ profile }: AddressManagerProps) {
             )}
 
             {/* Discreet GPS Link */}
-            {initialAddress.coordinates && (
+            {initialAddress.coordinates?.lat != null && initialAddress.coordinates?.lng != null && (
               <div className="mt-2 flex items-center gap-1.5 text-[0.68rem] text-gray-400">
                 <Compass className="w-3 h-3 text-green-500" />
                 <span>GPS Location Pinned (Lat: {initialAddress.coordinates.lat.toFixed(3)}, Lng: {initialAddress.coordinates.lng.toFixed(3)})</span>

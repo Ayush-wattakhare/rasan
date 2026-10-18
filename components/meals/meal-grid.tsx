@@ -9,7 +9,7 @@ interface MealGridProps {
     description: string;
     price: number;
     image_url: string | null;
-    is_vegetarian: boolean;
+    is_veg: boolean | null;
     rating: number | null;
     stock: number | null;
     vendors?: {

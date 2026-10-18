@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/auth/guards';
+import { isUuid } from '@/lib/utils/validation-ids';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +17,10 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters (userId, role, action)' },
         { status: 400 }
       );
+    }
+    // Validated before it is used inside a PostgREST .or() filter below.
+    if (!isUuid(targetUserId) || (role !== 'vendor' && role !== 'delivery')) {
+      return NextResponse.json({ error: 'Invalid user id or role' }, { status: 400 });
     }
 
     const serviceClient = createServiceClient();
@@ -62,14 +67,22 @@ export async function POST(request: NextRequest) {
           ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
         };
 
-        await serviceClient
+        const { error: vErr } = await serviceClient
           .from('vendors')
           .update({
             is_active: isAccept,
+            // Vendor-level approval (migration 006): independent of the rider role.
+            is_approved: isAccept,
             documents: updatedDocs,
             updated_at: new Date().toISOString(),
           })
           .eq('id', vRecord.id);
+        if (vErr) {
+          console.error('Vendor verify update error:', vErr);
+          return NextResponse.json({ error: 'Failed to update vendor' }, { status: 500 });
+        }
+      } else {
+        return NextResponse.json({ error: 'Vendor application not found' }, { status: 404 });
       }
     } else if (role === 'delivery') {
       const { data: dRecord } = await serviceClient
@@ -100,7 +113,7 @@ export async function POST(request: NextRequest) {
           ...(isAccept ? { approved_at: new Date().toISOString() } : {}),
         };
 
-        await serviceClient
+        const { error: dErr } = await serviceClient
           .from('delivery_partners')
           .update({
             is_verified: isAccept,
@@ -109,6 +122,12 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq('id', dRecord.id);
+        if (dErr) {
+          console.error('Delivery verify update error:', dErr);
+          return NextResponse.json({ error: 'Failed to update delivery partner' }, { status: 500 });
+        }
+      } else {
+        return NextResponse.json({ error: 'Delivery partner application not found' }, { status: 404 });
       }
     }
 
@@ -129,7 +148,14 @@ export async function POST(request: NextRequest) {
       profileUpdate.role = 'customer';
     }
 
-    await serviceClient.from('profiles').update(profileUpdate).eq('id', actualUserId);
+    const { error: profileErr } = await serviceClient
+      .from('profiles')
+      .update(profileUpdate)
+      .eq('id', actualUserId);
+    if (profileErr) {
+      console.error('Profile verify update error:', profileErr);
+      return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
+    }
 
     // 3. Dispatch Notification to the Partner (Client)
     try {
@@ -170,6 +196,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error('Partner verification error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

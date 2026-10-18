@@ -10,6 +10,7 @@ export type CreateOrderRequest = {
     subscription_type?: SubscriptionType;
     delivery_days?: string[];
     delivery_time?: string;
+    plan_start_date?: string;
   }[];
   payment_method: PaymentMethod;
   delivery_address: Address;

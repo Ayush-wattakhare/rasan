@@ -38,6 +38,8 @@ export default function SubscriptionCard({
         return 'bg-green-100 text-green-800';
       case 'paused':
         return 'bg-yellow-100 text-yellow-800';
+      case 'pending_payment':
+        return 'bg-amber-100 text-amber-900';
       case 'cancelled':
         return 'bg-red-100 text-red-800';
       case 'completed':
@@ -115,7 +117,7 @@ export default function SubscriptionCard({
               subscription.status
             )} text-center`}
           >
-            {subscription.status}
+            {subscription.status === 'pending_payment' ? 'Awaiting payment' : subscription.status}
           </div>
         </div>
 

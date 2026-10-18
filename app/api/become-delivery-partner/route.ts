@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveApplicantAccount } from '@/lib/auth/applicant-account';
+import { applicationStatusOf, notifyAdmins } from '@/lib/notifications/admin-alerts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,6 @@ export async function POST(request: NextRequest) {
       vehicleType,
       vehicleNumber,
       licenseNumber,
-      age,
       bloodGroup,
       emergencyContact,
       aadharNumber,
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       email,
       password,
       fullName,
+      phone,
     } = body;
 
     if (!vehicleType || !vehicleNumber || !licenseNumber) {
@@ -36,38 +37,46 @@ export async function POST(request: NextRequest) {
       email,
       password,
       name: fullName || 'Delivery Partner',
-      phone: emergencyContact,
+      // The rider's own number only. The emergency contact is stored in documents.
+      phone: typeof phone === 'string' ? phone : undefined,
       role: 'delivery',
     });
     if (!applicant.ok) return applicant.response;
     const targetUserId = applicant.userId;
 
-
-    // Check if delivery record already exists for user
     const { data: existingPartner } = await serviceSupabase
       .from('delivery_partners')
-      .select('id')
+      .select('id, is_verified, documents')
       .eq('user_id', targetUserId)
       .maybeSingle();
 
     if (existingPartner) {
-      await serviceSupabase.from('profiles').update({ role: 'delivery' }).eq('id', targetUserId);
+      // Never change the role here (see become-vendor for the reasoning).
+      const status = applicationStatusOf(existingPartner.documents);
+      if (status === 'declined' || status === 'blocked') {
+        return NextResponse.json(
+          { error: `Your rider application was ${status}. Please contact support.` },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({
         success: true,
         alreadyExists: true,
-        message: 'You already have an active or pending delivery partner profile.',
-        partner: existingPartner,
+        applicationStatus: existingPartner.is_verified ? 'approved' : status,
+        message: existingPartner.is_verified
+          ? 'Your rider account is already approved.'
+          : 'Your rider application is pending admin review.',
+        partner: { id: existingPartner.id },
       });
     }
 
-    // Insert pending delivery partner record matching Database schema
     const { data: partner, error: deliveryError } = await serviceSupabase
       .from('delivery_partners')
       .insert({
         user_id: targetUserId,
         vehicle_type: vehicleType as any,
-        vehicle_number: vehicleNumber,
-        license_number: licenseNumber,
+        vehicle_number: String(vehicleNumber).slice(0, 20),
+        license_number: String(licenseNumber).slice(0, 30),
         is_online: false,
         rating: 0,
         total_deliveries: 0,
@@ -84,30 +93,34 @@ export async function POST(request: NextRequest) {
         earnings: { today: 0, this_week: 0, this_month: 0, total: 0 },
         is_verified: false,
       })
-      .select()
+      .select('id, vehicle_type, vehicle_number, is_verified')
       .single();
 
     if (deliveryError) {
       console.error('Error inserting delivery application:', deliveryError);
       return NextResponse.json(
-        { error: `Failed to submit delivery partner application: ${deliveryError.message}` },
+        { error: 'Failed to submit delivery partner application. Please try again.' },
         { status: 500 }
       );
     }
 
-    // Crucial: Update user profile role to 'delivery' and set is_verified: false for admin review
-    await serviceSupabase
+    const { error: roleError } = await serviceSupabase
       .from('profiles')
       .update({ role: 'delivery', is_verified: false })
       .eq('id', targetUserId);
+    if (roleError) console.error('Rider applicant role update error:', roleError);
 
-    // Send admin notification
+    await notifyAdmins({
+      title: 'New Delivery Partner Application',
+      message: `Rider application (${vehicleType} · ${String(vehicleNumber).slice(0, 20)}) is pending review.`,
+      data: { delivery_partner_id: partner.id, user_id: targetUserId },
+    });
     try {
       await serviceSupabase.from('notifications').insert({
         user_id: targetUserId,
         type: 'system',
-        title: 'New Delivery Partner Application',
-        message: `Rider application submitted (${vehicleType} - ${vehicleNumber}). Pending admin review.`,
+        title: 'Application Received',
+        message: "Thanks for applying to ride with Rasan. We'll review your documents within 24-48 hours.",
         is_read: false,
       });
     } catch {
@@ -120,11 +133,8 @@ export async function POST(request: NextRequest) {
       partner,
       createdAccount: !authUser,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Unexpected error in delivery partner application:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

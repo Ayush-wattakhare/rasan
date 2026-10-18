@@ -5,6 +5,8 @@ import { requireUser } from '@/lib/auth/guards';
 import { WEEKDAYS, calculateCartTotals, getItemPricing } from '@/lib/pricing/order-pricing';
 import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
+import { coordsFromAddress, parseVendorLocation } from '@/lib/utils/geo';
+import { defaultPlanStart, isValidPlanStart, planMealCount } from '@/lib/pricing/plan-schedule';
 import type { PaymentMethod, SubscriptionType } from '@/types';
 
 const PAYMENT_METHODS: readonly PaymentMethod[] = ['cash', 'card', 'upi', 'wallet'];
@@ -18,6 +20,8 @@ type RequestedItem = {
   subscription_type: SubscriptionType;
   delivery_days: string[];
   delivery_time: string;
+  /** First delivery date of a weekly / monthly plan (YYYY-MM-DD, IST). */
+  plan_start_date?: string;
 };
 
 function parseItems(raw: unknown): RequestedItem[] | null {
@@ -35,12 +39,22 @@ function parseItems(raw: unknown): RequestedItem[] | null {
     if (!SUBSCRIPTION_TYPES.includes(subscriptionType)) return null;
     if (!deliveryDays.every((d) => (WEEKDAYS as readonly string[]).includes(String(d)))) return null;
 
+    const days = Array.from(new Set(deliveryDays.map(String)));
+    let planStart: string | undefined;
+    if (subscriptionType !== 'one-time') {
+      planStart = item.plan_start_date == null ? defaultPlanStart() : (item.plan_start_date as string);
+      if (!isValidPlanStart(planStart)) return null;
+      // A plan must deliver at least one meal (price follows the meal count).
+      if (planMealCount(subscriptionType, planStart, days) === 0) return null;
+    }
+
     items.push({
       meal_id: item.meal_id,
       quantity,
       subscription_type: subscriptionType,
-      delivery_days: Array.from(new Set(deliveryDays.map(String))),
+      delivery_days: days,
       delivery_time: typeof item.delivery_time === 'string' ? item.delivery_time.slice(0, 32) : '',
+      ...(planStart ? { plan_start_date: planStart } : {}),
     });
   }
   return items;
@@ -118,21 +132,18 @@ export async function POST(request: NextRequest) {
 
     // 🌡️ Server-side Freshness Guard — enforce MAX_DELIVERY_RADIUS_KM
     // Runs even if the browser client is bypassed or manipulated.
-    // vendor.location is a WKT/WKB geography point; parse lng,lat from it.
-    const customerCoords = (deliveryAddress as any)?.coordinates;
-    if (customerCoords?.lat != null && customerCoords?.lng != null && vendor.location) {
+    // vendor.location arrives as hex EWKB from Supabase (also WKT/GeoJSON); parse it.
+    const customerCoords = coordsFromAddress(deliveryAddress);
+    if (customerCoords && vendor.location) {
       try {
-        // PostGIS GEOGRAPHY(POINT) may arrive as WKT "POINT(lng lat)" or hex WKB.
-        // Only WKT is parseable here without PostGIS extension — non-critical fallback.
-        const match = String(vendor.location).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/);
-        if (match) {
-          const vendorLng = parseFloat(match[1]);
-          const vendorLat = parseFloat(match[2]);
+        // Kitchens that haven't pinned a real location (placeholder) skip the check.
+        const vendorCoords = parseVendorLocation(vendor.location);
+        if (vendorCoords) {
           const distKm = haversineDistanceKm(
-            Number(customerCoords.lat),
-            Number(customerCoords.lng),
-            vendorLat,
-            vendorLng
+            customerCoords.lat,
+            customerCoords.lng,
+            vendorCoords.lat,
+            vendorCoords.lng
           );
           if (distKm > MAX_DELIVERY_RADIUS_KM) {
             return NextResponse.json(
@@ -164,6 +175,11 @@ export async function POST(request: NextRequest) {
         delivery_days: item.delivery_days,
         delivery_time: item.delivery_time,
         discount_percentage: pricing.discountPct,
+        // Stored so the subscription created from this order schedules exactly
+        // the meals that were paid for.
+        ...(item.plan_start_date
+          ? { plan_start_date: item.plan_start_date, meal_count: pricing.mealCount }
+          : {}),
       };
     });
     const totals = calculateCartTotals(pricedItems);

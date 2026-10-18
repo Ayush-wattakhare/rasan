@@ -7,9 +7,9 @@ interface VendorGridProps {
     id: string;
     business_name: string;
     description: string | null;
-    cuisine_types: string[] | null;
+    cuisine: string[] | null;
     rating: number | null;
-    total_reviews: number | null;
+    total_orders?: number | null;
     is_active: boolean;
   }>;
 }

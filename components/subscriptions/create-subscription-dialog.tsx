@@ -33,6 +33,12 @@ import {
 } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
 import { calculateSubscriptionPricing } from '@/lib/pricing/subscription-pricing';
+import {
+  MAX_PLAN_START_DAYS_AHEAD,
+  defaultPlanStart,
+  planEndDate,
+} from '@/lib/pricing/plan-schedule';
+import { addDaysISO, istToday } from '@/lib/utils/ist-date';
 
 interface CreateSubscriptionDialogProps {
   vendors: any[];
@@ -43,24 +49,13 @@ interface CreateSubscriptionDialogProps {
   triggerButton?: React.ReactNode;
 }
 
+// IST calendar dates (the old UTC math made "tomorrow" = today before 05:30 IST).
 const getCalculatedDates = (planType: string, customStartDate?: string) => {
-  const start = customStartDate ? new Date(customStartDate) : new Date();
-  if (!customStartDate) {
-    start.setDate(start.getDate() + 1); // Starts tomorrow
-  }
-  const startDateStr = start.toISOString().split('T')[0];
-
-  const end = new Date(start);
-  if (planType === 'weekly') {
-    end.setDate(end.getDate() + 7);
-  } else if (planType === 'monthly') {
-    end.setDate(end.getDate() + 30);
-  } else {
-    end.setDate(end.getDate() + 1);
-  }
-  const endDateStr = end.toISOString().split('T')[0];
-
-  return { startDate: startDateStr, endDate: endDateStr };
+  const startDate = customStartDate || defaultPlanStart();
+  const plan = (['daily', 'weekly', 'monthly'] as const).includes(planType as any)
+    ? (planType as 'daily' | 'weekly' | 'monthly')
+    : 'daily';
+  return { startDate, endDate: planEndDate(plan, startDate) };
 };
 
 export default function CreateSubscriptionDialog({
@@ -116,7 +111,8 @@ export default function CreateSubscriptionDialog({
   const pricingDetails = calculateSubscriptionPricing(
     formData.plan_type,
     formData.meal_type,
-    formData.delivery_days.length
+    formData.delivery_days,
+    formData.start_date || defaultPlanStart()
   );
   const currentPrice = pricingDetails.finalPrice;
 
@@ -300,6 +296,8 @@ export default function CreateSubscriptionDialog({
             selectedPlanType={formData.plan_type}
             selectedMealType={formData.meal_type}
             deliveryDaysCount={formData.delivery_days.length}
+            deliveryDays={formData.delivery_days}
+            startDate={formData.start_date || defaultPlanStart()}
             onPlanChange={handlePlanChange}
           />
 
@@ -362,8 +360,8 @@ export default function CreateSubscriptionDialog({
                     type="date"
                     value={formData.start_date}
                     onChange={(e) => handleStartDateChange(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    max={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    min={defaultPlanStart()}
+                    max={addDaysISO(istToday(), MAX_PLAN_START_DAYS_AHEAD)}
                     className="rounded-xl border-gray-200 text-xs font-medium"
                     required
                   />
@@ -488,7 +486,9 @@ export default function CreateSubscriptionDialog({
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                {pricingDetails.multiplier} meals total • {formData.delivery_days.length} days/week • ₹{Math.round(pricingDetails.finalPrice / pricingDetails.multiplier)}/meal
+                {pricingDetails.mealCount > 0
+                  ? `${pricingDetails.mealCount} meals total • ${formData.delivery_days.length} days/week • ₹${Math.round(pricingDetails.finalPrice / pricingDetails.mealCount)}/meal`
+                  : 'No deliveries fall in this plan window. Pick other days or another start date.'}
               </p>
             </div>
 

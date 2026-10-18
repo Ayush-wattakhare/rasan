@@ -6,6 +6,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { PUBLIC_VENDOR_COLUMNS } from '@/lib/supabase/public-columns';
 import type { Database } from '@/types/database.types';
+import { sanitizeSearch } from '@/lib/utils/search';
+import { addDaysISO, istTimeHHMM, istToday, weekdayOf } from '@/lib/utils/ist-date';
 
 type SupabaseClientType = SupabaseClient<Database>;
 
@@ -31,17 +33,18 @@ export async function getVendors(
     .select(PUBLIC_VENDOR_COLUMNS, { count: 'exact' })
     .eq('is_active', true);
 
-  // Apply cuisine filter
+  // Apply cuisine filter (the column is `cuisine`, a text[])
   if (filters.cuisineType) {
-    query = query.contains('cuisine_types', [filters.cuisineType]);
+    query = query.contains('cuisine', [String(filters.cuisineType).slice(0, 40)]);
   }
 
-  // Apply search filter
-  if (filters.search) {
-    query = query.or(
-      `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
-    );
+  // Apply search filter (the name column is `business_name`)
+  const search = sanitizeSearch(filters.search);
+  if (search) {
+    query = query.or(`business_name.ilike.%${search}%,description.ilike.%${search}%`);
   }
+
+  page = Math.max(1, Math.floor(page) || 1);
 
   // Default sorting by rating
   query = query.order('rating', { ascending: false, nullsFirst: false });
@@ -140,18 +143,36 @@ export async function getVendorMeals(
 /**
  * Check if vendor is currently open
  */
-export function isVendorOpen(operatingHours: any): boolean {
+export function isVendorOpen(operatingHours: any, now: Date = new Date()): boolean {
   if (!operatingHours) return false;
 
-  const now = new Date();
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = dayNames[now.getDay()];
-  const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+  // Kitchens run on India time, whatever timezone the server is in.
+  const today = istToday(now);
+  const currentDay = weekdayOf(today);
+  const yesterday = weekdayOf(addDaysISO(today, -1));
+  const currentTime = istTimeHHMM(now);
 
-  const daySchedule = operatingHours[currentDay];
-  if (!daySchedule || !daySchedule.is_open) return false;
+  const isValid = (s: any) =>
+    s && s.is_open && typeof s.open_time === 'string' && typeof s.close_time === 'string';
 
-  return currentTime >= daySchedule.open_time && currentTime <= daySchedule.close_time;
+  const todaySchedule = operatingHours[currentDay];
+  if (isValid(todaySchedule)) {
+    const { open_time: open, close_time: close } = todaySchedule;
+    if (open <= close) {
+      if (currentTime >= open && currentTime <= close) return true;
+    } else if (currentTime >= open) {
+      // Overnight hours (e.g. 18:00-02:00): open from `open` until midnight.
+      return true;
+    }
+  }
+
+  // After midnight, still inside yesterday's overnight window.
+  const prev = operatingHours[yesterday];
+  if (isValid(prev) && prev.open_time > prev.close_time && currentTime <= prev.close_time) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

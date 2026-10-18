@@ -79,7 +79,7 @@ export default function BottomBar({ userRole }: BottomBarProps) {
             >
               <div className="relative">
                 <Icon className={`w-5 h-5 transition-all duration-500 ${active ? 'scale-110 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'group-hover:scale-110 text-gray-500 group-hover:text-gray-300'}`} />
-                {'badge' in item && item.badge && item.badge > 0 && (
+                {'badge' in item && Number(item.badge) > 0 && (
                   <span className="absolute -top-2.5 -right-2.5 bg-orange-600 text-white text-[0.55rem] font-black rounded-full h-4.5 w-4.5 flex items-center justify-center border-2 border-[#1A1A1A] shadow-lg animate-in zoom-in duration-300">
                     {item.badge}
                   </span>

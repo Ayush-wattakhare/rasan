@@ -179,7 +179,8 @@ function useToast() {
         listeners.splice(index, 1);
       }
     };
-  }, [state]);
+    // Subscribe once; re-subscribing on every state change could miss a dispatch.
+  }, []);
 
   return {
     ...state,
