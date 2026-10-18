@@ -81,8 +81,15 @@ export function hasLocationCookie(): boolean {
   return document.cookie.split(';').some((c) => c.trim().startsWith(`${LOCATION_COOKIE}=`));
 }
 
+/** True when a lookup produced a real place name rather than bare coordinates. */
+export function hasResolvedAddress(details: LocationDetails | null | undefined): boolean {
+  return Boolean(details?.locality || details?.city || details?.street);
+}
+
 /**
- * Reverse geocode latitude and longitude to address details using OpenStreetMap Nominatim
+ * Reverse geocode latitude and longitude to address details via /api/geocode
+ * (server proxy to OpenStreetMap Nominatim). On failure only the raw
+ * coordinates are returned; use `hasResolvedAddress` to detect that.
  */
 export async function reverseGeocode(
   lat: number,
@@ -90,45 +97,22 @@ export async function reverseGeocode(
   signal?: AbortSignal
 ): Promise<LocationDetails> {
   // Never invent a place: if lookup fails, show the raw coordinates only.
-  let details: LocationDetails = {
+  const fallback: LocationDetails = {
     full_address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
   };
 
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&zoom=18&accept-language=en`,
-      { signal }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const addr = data.address || {};
-
-      const road = addr.road || addr.street || addr.pedestrian || addr.path || '';
-      const house = addr.house_number || '';
-      const street = [house, road].filter(Boolean).join(' ') || addr.suburb || addr.neighbourhood || '';
-
-      const city = addr.city || addr.town || addr.village || addr.city_district || addr.county || '';
-      const state = addr.state || addr.region || '';
-      const zip_code = addr.postcode || '';
-      const locality =
-        addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || addr.city_district || addr.town || city || '';
-
-      details = {
-        street,
-        city,
-        state,
-        zip_code,
-        locality,
-        building: addr.building || addr.amenity || '',
-        full_address: data.display_name || details.full_address,
-      };
-    }
+    const res = await fetch(`/api/geocode?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`, { signal });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const d = data?.details;
+    if (!d || typeof d !== 'object') return fallback;
+    return { ...d, full_address: d.full_address || fallback.full_address };
   } catch (e: any) {
     if (e?.name === 'AbortError') throw e;
     console.warn('Reverse geocoding failed, showing coordinates only:', e);
+    return fallback;
   }
-
-  return details;
 }
 
 /** Converts a GeolocationPositionError (or anything) into a user-facing message. */
@@ -203,36 +187,39 @@ export function getBestPosition(options?: {
   });
 }
 
-/**
- * Search locations by query string using Nominatim API
- */
-export async function searchLocations(query: string): Promise<Array<{
+export interface LocationSearchResult {
   display_name: string;
   lat: number;
   lng: number;
   locality: string;
-}>> {
-  if (!query || query.trim().length < 2) return [];
+  city?: string;
+}
+
+/**
+ * Search places in India via /api/geocode. When `near` is given, results
+ * close to that point rank first (e.g. typing "Sitabuldi" while pinned in Nagpur).
+ */
+export async function searchLocations(
+  query: string,
+  near?: { lat: number; lng: number } | null,
+  signal?: AbortSignal
+): Promise<LocationSearchResult[]> {
+  const q = query?.trim() || '';
+  if (q.length < 2) return [];
+
+  const params = new URLSearchParams({ q });
+  if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+    params.set('lat', near.lat.toFixed(4));
+    params.set('lng', near.lng.toFixed(4));
+  }
 
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&addressdetails=1&countrycodes=in&limit=6`,
-      { headers: { 'User-Agent': 'Rasan-Food-Delivery-App' } }
-    );
+    const res = await fetch(`/api/geocode?${params.toString()}`, { signal });
     if (!res.ok) return [];
     const data = await res.json();
-
-    return data.map((item: any) => {
-      const addr = item.address || {};
-      const locality = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.town || addr.city || item.name || 'Location';
-      return {
-        display_name: item.display_name,
-        lat: parseFloat(item.lat),
-        lng: parseFloat(item.lon),
-        locality,
-      };
-    });
-  } catch (e) {
+    return Array.isArray(data?.results) ? data.results : [];
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
     console.warn('Location search failed:', e);
     return [];
   }

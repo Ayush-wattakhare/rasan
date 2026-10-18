@@ -17,11 +17,13 @@ import { Button } from '@/components/ui/button';
 import {
   reverseGeocode,
   searchLocations,
+  hasResolvedAddress,
   getAccurateLocation,
   setStoredDeliveryLocation,
   getStoredDeliveryLocation,
   AccurateLocationResult,
   LocationDetails,
+  LocationSearchResult,
 } from '@/lib/hooks/use-location';
 
 interface LocationSelectorModalProps {
@@ -30,21 +32,8 @@ interface LocationSelectorModalProps {
   onSelectLocation?: (location: AccurateLocationResult) => void;
 }
 
-// Popular localities in and around Pimpri-Chinchwad / Pune for instant one-tap selection
-const POPULAR_LOCALITIES = [
-  { name: 'Pimpri', locality: 'Pimpri', lat: 18.6279, lng: 73.8009, label: 'Pimpri (PCMC)' },
-  { name: 'Chinchwad', locality: 'Chinchwad', lat: 18.6298, lng: 73.784, label: 'Chinchwad' },
-  { name: 'Rahatani', locality: 'Rahatani', lat: 18.601, lng: 73.786, label: 'Rahatani' },
-  { name: 'Wakad', locality: 'Wakad', lat: 18.5987, lng: 73.7667, label: 'Wakad' },
-  { name: 'Hinjawadi', locality: 'Hinjawadi', lat: 18.5913, lng: 73.7389, label: 'Hinjawadi (Phase 1-3)' },
-  { name: 'Baner', locality: 'Baner', lat: 18.559, lng: 73.7868, label: 'Baner' },
-  { name: 'Aundh', locality: 'Aundh', lat: 18.5602, lng: 73.8031, label: 'Aundh' },
-  { name: 'Nigdi', locality: 'Nigdi', lat: 18.6558, lng: 73.7749, label: 'Nigdi' },
-  { name: 'Ravet', locality: 'Ravet', lat: 18.6477, lng: 73.7483, label: 'Ravet' },
-];
-
-/** Map view used only while we wait for the real position. Nothing is selected here. */
-const SERVICE_AREA_VIEW = { lat: 18.6, lng: 73.79, zoom: 11 };
+/** Whole-India view used only while we wait for the real position. Nothing is selected here. */
+const DEFAULT_VIEW = { lat: 22.5, lng: 79, zoom: 5 };
 
 /** Above this, the fix is likely Wi-Fi/IP based: ask the user to fine-tune the pin. */
 const LOW_ACCURACY_METERS = 100;
@@ -87,14 +76,20 @@ export function LocationSelectorModal({
   const [locationDetails, setLocationDetails] = useState<LocationDetails>({});
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<
-    Array<{ display_name: string; lat: number; lng: number; locality: string }>
-  >([]);
+  const [searchResults, setSearchResults] = useState<LocationSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchedOnce, setSearchedOnce] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+  const [geocodeFailed, setGeocodeFailed] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Latest pin, read by the search debouncer to bias results without re-running it.
+  const pointRef = useRef<Point | null>(null);
+  useEffect(() => {
+    pointRef.current = point;
+  }, [point]);
 
   // ── Map helpers (all imperative, work from any callback without stale state) ──
 
@@ -123,10 +118,14 @@ export function LocationSelectorModal({
     const controller = new AbortController();
     geocodeAbortRef.current = controller;
     setIsReverseGeocoding(true);
+    setGeocodeFailed(false);
     try {
       const details = await reverseGeocode(p.lat, p.lng, controller.signal);
       if (!controller.signal.aborted) {
-        setLocationDetails({ ...fallback, ...stripEmpty(details) });
+        const resolved = hasResolvedAddress(details);
+        // Keep a search result's name if the lookup came back empty.
+        setLocationDetails(resolved ? { ...fallback, ...stripEmpty(details) } : { ...stripEmpty(details), ...fallback });
+        setGeocodeFailed(!resolved && !hasResolvedAddress(fallback));
       }
     } catch {
       // Aborted by a newer lookup.
@@ -180,7 +179,8 @@ export function LocationSelectorModal({
       }
 
       if (opts?.details) setLocationDetails(opts.details);
-      if (!opts?.skipGeocode) lookupAddress(p, opts?.details);
+      if (opts?.skipGeocode) setGeocodeFailed(false);
+      else lookupAddress(p, opts?.details);
     },
     [drawAccuracy, lookupAddress]
   );
@@ -213,7 +213,8 @@ export function LocationSelectorModal({
       selectPointRef.current({ lat: result.lat, lng: result.lng }, 'gps', {
         accuracy: result.accuracy,
         details: result.details,
-        skipGeocode: true,
+        // If the address lookup inside getAccurateLocation failed, try once more.
+        skipGeocode: hasResolvedAddress(result.details),
         zoom: 17,
       });
     } catch (err: any) {
@@ -235,8 +236,8 @@ export function LocationSelectorModal({
 
       leafletRef.current = L;
       const map = L.map(mapContainerRef.current, {
-        center: [SERVICE_AREA_VIEW.lat, SERVICE_AREA_VIEW.lng],
-        zoom: SERVICE_AREA_VIEW.zoom,
+        center: [DEFAULT_VIEW.lat, DEFAULT_VIEW.lng],
+        zoom: DEFAULT_VIEW.zoom,
         zoomControl: false,
       });
       mapInstanceRef.current = map;
@@ -260,7 +261,8 @@ export function LocationSelectorModal({
       if (stored && Number.isFinite(stored.lat) && Number.isFinite(stored.lng)) {
         selectPointRef.current({ lat: stored.lat, lng: stored.lng }, 'stored', {
           details: stored.details || {},
-          skipGeocode: true,
+          // Older saves may hold only coordinates (lookup had failed): resolve them now.
+          skipGeocode: hasResolvedAddress(stored.details),
           zoom: 17,
           fly: false,
         });
@@ -288,6 +290,7 @@ export function LocationSelectorModal({
     setPointSource(null);
     setAccuracy(null);
     setLocationDetails({});
+    setGeocodeFailed(false);
     setGpsError(null);
     setSearchQuery('');
     initMap();
@@ -321,26 +324,35 @@ export function LocationSelectorModal({
     if (!searchQuery || searchQuery.trim().length < 2) {
       setSearchResults([]);
       setShowSearchResults(false);
+      setSearchedOnce(false);
+      setIsSearching(false);
       return;
     }
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await searchLocations(searchQuery);
+        // Rank places near the current pin first (e.g. Nagpur areas when pinned in Nagpur).
+        const results = await searchLocations(searchQuery, pointRef.current, controller.signal);
+        if (controller.signal.aborted) return;
         setSearchResults(results);
-        setShowSearchResults(results.length > 0);
+        setShowSearchResults(true);
+        setSearchedOnce(true);
       } catch {
-        setSearchResults([]);
+        // Aborted by a newer keystroke.
       } finally {
-        setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       }
     }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery]);
 
-  const handleSelectPlace = (place: { lat: number; lng: number; locality: string; display_name?: string }) => {
+  const handleSelectPlace = (place: LocationSearchResult) => {
     gpsRunRef.current++; // a manual choice wins over a GPS fix still arriving
     setIsLocating(false);
     setShowSearchResults(false);
@@ -348,8 +360,16 @@ export function LocationSelectorModal({
     // Reverse-geocode so street / city / pincode are real, not guessed.
     selectPoint({ lat: place.lat, lng: place.lng }, 'search', {
       zoom: 16,
-      details: { locality: place.locality, full_address: place.display_name || place.locality },
+      details: stripEmpty({
+        locality: place.locality,
+        city: place.city,
+        full_address: place.display_name || place.locality,
+      }),
     });
+  };
+
+  const handleRetryLookup = () => {
+    if (point) lookupAddress(point);
   };
 
   const handleConfirmLocation = () => {
@@ -370,7 +390,16 @@ export function LocationSelectorModal({
   if (!isOpen) return null;
 
   const lowAccuracy = pointSource === 'gps' && accuracy !== null && accuracy > LOW_ACCURACY_METERS;
-  const title = locationDetails.locality || locationDetails.street || (point ? 'Pinned location' : 'Finding your location…');
+  const placeName = locationDetails.locality || locationDetails.street || locationDetails.city;
+  const title =
+    placeName && locationDetails.city && locationDetails.city !== placeName
+      ? `${placeName}, ${locationDetails.city}`
+      : placeName ||
+        (!point
+          ? 'Finding your location…'
+          : isReverseGeocoding
+            ? 'Looking up address…'
+            : 'Selected location');
   const subtitle =
     locationDetails.full_address || (point ? `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}` : 'Allow location access, search, or tap the map');
 
@@ -423,7 +452,13 @@ export function LocationSelectorModal({
                 <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-600 animate-spin" />
               )}
 
-              {showSearchResults && (
+              {showSearchResults && searchedOnce && searchResults.length === 0 && !isSearching && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 z-50 text-xs text-gray-600">
+                  No places found. Try a nearby landmark or area name, or tap the map.
+                </div>
+              )}
+
+              {showSearchResults && searchResults.length > 0 && (
                 <div
                   role="listbox"
                   className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-50 max-h-60 overflow-y-auto"
@@ -471,21 +506,6 @@ export function LocationSelectorModal({
                 <span>{gpsError}</span>
               </div>
             )}
-
-            <div className="space-y-1 sm:space-y-2">
-              <p className="text-[0.6rem] sm:text-[0.65rem] font-black text-gray-500 uppercase tracking-widest">Popular PCMC / Pune Zones</p>
-              <div className="flex md:flex-wrap gap-1.5 overflow-x-auto md:overflow-visible pb-1 md:pb-0 scrollbar-none snap-x">
-                {POPULAR_LOCALITIES.map((loc) => (
-                  <button
-                    key={loc.name}
-                    onClick={() => handleSelectPlace(loc)}
-                    className="snap-start shrink-0 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-white text-gray-700 border border-gray-200 hover:border-orange-300 hover:bg-orange-50/50"
-                  >
-                    {loc.name}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <div className="mt-auto hidden md:flex p-3.5 rounded-2xl bg-orange-50/70 border border-orange-100/80 text-[0.7rem] text-orange-950 items-start gap-2.5">
               <span className="text-base" aria-hidden="true">💡</span>
@@ -535,6 +555,18 @@ export function LocationSelectorModal({
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight truncate">{title}</h3>
                   <p className="text-[0.65rem] sm:text-xs text-gray-500 line-clamp-1">{subtitle}</p>
+                  {geocodeFailed && point && !isReverseGeocoding && (
+                    <p className="text-[0.65rem] sm:text-xs text-amber-700 mt-0.5">
+                      Couldn&apos;t fetch the address name. The pin is still exact.{' '}
+                      <button
+                        type="button"
+                        onClick={handleRetryLookup}
+                        className="font-bold underline underline-offset-2 hover:text-amber-900"
+                      >
+                        Retry
+                      </button>
+                    </p>
+                  )}
                 </div>
               </div>
 
