@@ -23,6 +23,8 @@ interface AddToCartButtonProps {
   variant?: 'default' | 'outline' | 'ghost';
   size?: 'default' | 'sm' | 'lg' | 'icon';
   showQuantity?: boolean;
+  /** When set, the button is disabled and shows this reason (e.g. kitchen out of delivery range). */
+  disabledReason?: string | null;
 }
 
 export function AddToCartButton({
@@ -30,6 +32,7 @@ export function AddToCartButton({
   variant = 'default',
   size = 'default',
   showQuantity = false,
+  disabledReason = null,
 }: AddToCartButtonProps) {
   const router = useRouter();
   const { user } = useAuth();
@@ -130,6 +133,15 @@ export function AddToCartButton({
       updateQuantity(meal.id, quantity - 1, cartItem.subscription_type || 'one-time');
     }
   };
+
+  // Kitchen can't deliver to the customer (or similar): no ordering at all.
+  if (disabledReason) {
+    return (
+      <Button variant="outline" size={size} disabled title={disabledReason}>
+        {disabledReason}
+      </Button>
+    );
+  }
 
   // If item is in cart and showQuantity is true, show quantity controls
   if (quantity > 0 && showQuantity) {

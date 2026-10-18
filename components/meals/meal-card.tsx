@@ -31,14 +31,17 @@ interface MealCardProps {
     rating: number | null;
     stock: number | null;
     vendor_id?: string;
+    preparation_time?: number | null;
     vendors?: {
       id?: string;
       business_name: string;
     };
   };
+  /** False when the kitchen doesn't deliver to the customer (preview listings). */
+  orderable?: boolean;
 }
 
-function MealCard({ meal }: MealCardProps) {
+function MealCard({ meal, orderable = true }: MealCardProps) {
   const { addItem, clearAndAddItem } = useCart();
   const { toast } = useToast();
   const router = useRouter();
@@ -171,10 +174,12 @@ function MealCard({ meal }: MealCardProps) {
                 {meal.rating && meal.rating > 0 ? meal.rating.toFixed(1) : 'New'}
               </div>
               
-              <div className="bg-white/95 backdrop-blur-md text-gray-900 px-2 py-0.5 sm:py-1 rounded-lg flex items-center gap-1 text-[0.6rem] font-black shadow-lg border border-orange-50">
-                <Clock className="w-2.5 h-2.5 text-orange-600" />
-                30m
-              </div>
+              {Number(meal.preparation_time) > 0 && (
+                <div className="bg-white/95 backdrop-blur-md text-gray-900 px-2 py-0.5 sm:py-1 rounded-lg flex items-center gap-1 text-[0.6rem] font-black shadow-lg border border-orange-50">
+                  <Clock className="w-2.5 h-2.5 text-orange-600" aria-hidden="true" />
+                  {meal.preparation_time}m prep
+                </div>
+              )}
             </div>
               {/* Sold-out overlay */}
               {meal.stock === 0 && (
@@ -188,9 +193,7 @@ function MealCard({ meal }: MealCardProps) {
           <CardContent className="p-3 sm:p-4">
             <div className="flex flex-col gap-0.5 mb-3">
               <div className="flex items-center gap-1 text-[0.55rem] font-black uppercase tracking-widest text-orange-600 mb-0.5">
-                <span>Chef Special</span>
-                <span className="w-1 h-1 bg-orange-600 rounded-full"></span>
-                <span className="hidden xs:inline">Home Made</span>
+                <span>Home Made</span>
               </div>
               <h3 className="font-extrabold text-sm sm:text-base text-gray-900 line-clamp-1 group-hover:text-orange-600 transition-colors leading-tight tracking-tight">
                 {meal.name}
@@ -210,6 +213,7 @@ function MealCard({ meal }: MealCardProps) {
                 </span>
               </div>
               
+              {orderable && (
               <button
                 type="button"
                 onClick={handleQuickAdd}
@@ -228,6 +232,7 @@ function MealCard({ meal }: MealCardProps) {
                   <span className="text-base font-black group-hover/btn:rotate-90 transition-transform leading-none">+</span>
                 )}
               </button>
+              )}
             </div>
           </CardContent>
         </Card>

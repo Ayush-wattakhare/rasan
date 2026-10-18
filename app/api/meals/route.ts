@@ -3,6 +3,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { checkDiscount, validateMealInput } from '@/lib/validation/meal';
 import { sanitizeSearch } from '@/lib/utils/search';
 import { isUuid } from '@/lib/utils/validation-ids';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { getServiceArea } from '@/lib/location/nearby';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,6 +54,12 @@ export async function GET(request: NextRequest) {
       const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0);
       const search = sanitizeSearch(searchParams.get('search'));
 
+      // Only kitchens that deliver to the customer's saved location (cookie).
+      const area = await getServiceArea(serviceSupabase, await getDeliveryLocation());
+      if (area.status !== 'available') {
+        return NextResponse.json({ success: true, meals: [], serviceStatus: area.status });
+      }
+
       let listQuery = serviceSupabase
         .from('meals')
         .select(`
@@ -65,6 +73,7 @@ export async function GET(request: NextRequest) {
         `)
         .eq('is_available', true)
         .eq('vendors.is_active', true)
+        .in('vendor_id', area.kitchens.map((k) => k.id))
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 

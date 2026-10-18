@@ -1,39 +1,19 @@
 import { notFound } from 'next/navigation';
-import { createClient, createStaticClient } from '@/lib/supabase/server';
+import { createStaticClient } from '@/lib/supabase/server';
 import { getMealById } from '@/lib/services/meal-service';
 import MealDetails from '@/components/meals/meal-details';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { deliveryRange } from '@/lib/location/delivery-range';
+import { DeliveryRangeNotice } from '@/components/location/delivery-range-notice';
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-// Enable ISR with 60 second revalidation
-export const revalidate = 60;
-
-// Generate static params for popular meals
-export async function generateStaticParams() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!url || url.includes('placeholder')) {
-    return [];
-  }
-
-  try {
-    const supabase = createStaticClient();
-    
-    const { data: meals } = await supabase
-      .from('meals')
-      .select('id')
-      .eq('is_available', true)
-      .order('rating', { ascending: false })
-      .limit(20);
-
-    return meals?.map((meal) => ({ id: meal.id })) || [];
-  } catch {
-    return [];
-  }
-}
+// Rendered per request: the delivery banner depends on the customer's location
+// cookie (reading cookies() already makes the page dynamic).
 
 export default async function PublicMealDetailPage({ params }: PageProps) {
   const { id } = await params;
@@ -50,6 +30,10 @@ export default async function PublicMealDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  // Direct links still open the page, but a far-away kitchen can't be ordered from.
+  const customer = await getDeliveryLocation();
+  const range = deliveryRange(customer, (meal as any).vendors?.location);
+
   return (
     <div className="container mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6">
@@ -58,7 +42,12 @@ export default async function PublicMealDetailPage({ params }: PageProps) {
         </Link>
       </div>
 
-      <MealDetails meal={meal as any} />
+      <DeliveryRangeNotice range={range} city={customer?.city} />
+
+      <MealDetails
+        meal={meal as any}
+        orderDisabledReason={range.status === 'out-of-range' ? "Doesn't deliver to you" : null}
+      />
     </div>
   );
 }

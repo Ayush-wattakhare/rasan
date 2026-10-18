@@ -11,6 +11,7 @@ interface VendorGridProps {
     rating: number | null;
     total_orders?: number | null;
     is_active: boolean;
+    distance_km?: number | null;
   }>;
 }
 

@@ -1,6 +1,11 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import {
+  LOCATION_COOKIE,
+  LOCATION_COOKIE_MAX_AGE,
+  serializeLocationCookie,
+} from '@/lib/location/location-cookie';
 
 export interface LocationDetails {
   street?: string;
@@ -44,10 +49,36 @@ export function setStoredDeliveryLocation(location: AccurateLocationResult): voi
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(RASAN_LOCATION_STORAGE_KEY, JSON.stringify(location));
+    writeLocationCookie(location);
     window.dispatchEvent(new CustomEvent(RASAN_LOCATION_EVENT, { detail: location }));
   } catch (err) {
     console.error('Failed to store delivery location:', err);
   }
+}
+
+/** Display name for a stored location (city first, then locality). */
+export function locationCityName(location: Pick<AccurateLocationResult, 'details'> | null): string {
+  const d = location?.details || {};
+  return d.city || d.locality || '';
+}
+
+/**
+ * Mirrors the location into a cookie so server-rendered pages (home, /meals,
+ * /vendors) can list only kitchens that deliver there. localStorage stays the
+ * source for the full address details.
+ */
+export function writeLocationCookie(location: Pick<AccurateLocationResult, 'lat' | 'lng' | 'details'>): void {
+  if (typeof document === 'undefined') return;
+  if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie =
+    `${LOCATION_COOKIE}=${serializeLocationCookie({ lat: location.lat, lng: location.lng, city: locationCityName(location) })}` +
+    `; Path=/; Max-Age=${LOCATION_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+}
+
+export function hasLocationCookie(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split(';').some((c) => c.trim().startsWith(`${LOCATION_COOKIE}=`));
 }
 
 /**

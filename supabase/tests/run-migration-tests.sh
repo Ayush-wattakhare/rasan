@@ -26,7 +26,8 @@ dropdb --if-exists "$DB" && createdb "$DB" || exit 1
 for f in supabase-stub.sql "$TMP/001.sql" "$MIG/002_fix_order_rls.sql" "$MIG/002_notifications_triggers.sql" \
          "$TMP/seed.sql" "$MIG/003_security_hardening.sql" "$MIG/003_security_hardening.sql" \
          "$MIG/004_phone_auth.sql" "$MIG/005_support_refunds_broadcasts.sql" \
-         "$MIG/006_hardening_v2.sql" "$MIG/006_hardening_v2.sql"; do
+         "$MIG/006_hardening_v2.sql" "$MIG/006_hardening_v2.sql" \
+         "$MIG/007_nearby_listings.sql" "$MIG/007_nearby_listings.sql"; do
   psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$f" > /dev/null 2> "$TMP/err" || { echo "Failed applying $f"; cat "$TMP/err"; exit 1; }
 done
 echo "Migrations applied (003 and 006 applied twice to check they are re-runnable)."

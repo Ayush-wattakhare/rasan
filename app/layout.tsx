@@ -31,6 +31,7 @@ export const metadata: Metadata = {
 };
 
 import { CartProvider } from '@/lib/contexts/cart-context';
+import { LocationSync } from '@/components/location/location-sync';
 import { ToastProvider } from '@/components/ui/toast';
 
 import Script from 'next/script';
@@ -83,6 +84,7 @@ export default async function RootLayout({
           src="https://checkout.razorpay.com/v1/checkout.js"
           strategy="lazyOnload"
         />
+        <LocationSync />
         <CartProvider>
           <ToastProvider>
             <div className="flex min-h-screen flex-col relative z-0">

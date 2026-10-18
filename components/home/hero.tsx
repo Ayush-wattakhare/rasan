@@ -2,54 +2,42 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, ChevronDown, Eye } from 'lucide-react';
+import { Search, MapPin, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { LocationSelectorModal } from '@/components/location/location-selector-modal';
 import { CityUnavailable } from '@/components/location/city-unavailable';
-import { haversineDistanceKm } from '@/lib/utils/constants';
 import {
   getStoredDeliveryLocation,
   RASAN_LOCATION_EVENT,
   AccurateLocationResult,
 } from '@/lib/hooks/use-location';
 
-export default function Hero() {
+interface HeroProps {
+  /**
+   * Decided on the server from the customer's saved location (10 km delivery
+   * radius). The hero and every listing below use the same answer.
+   */
+  serviceStatus: 'available' | 'unavailable' | 'no-location' | 'lookup-failed';
+  areaName: string;
+  kitchenCount: number;
+}
+
+export default function Hero({ serviceStatus, areaName, kitchenCount }: HeroProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [location, setLocation] = useState('Pimpri');
+  const [location, setLocation] = useState('Set location');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-  const [isOutOfServiceArea, setIsOutOfServiceArea] = useState(false);
-  const [outOfCityName, setOutOfCityName] = useState('');
-  const [previewMode, setPreviewMode] = useState(false);
 
-  const checkServiceArea = (loc: AccurateLocationResult | null) => {
-    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
-    const distanceToPune = haversineDistanceKm(loc.lat, loc.lng, 18.5204, 73.8567);
-    if (distanceToPune > 35) {
-      setIsOutOfServiceArea(true);
-      setOutOfCityName(loc.details.city || loc.details.locality || 'your area');
-    } else {
-      setIsOutOfServiceArea(false);
-    }
-  };
-
-  // Initialize and synchronize location from storage or global events
+  // Label only; what is listed is decided on the server.
   useEffect(() => {
     const stored = getStoredDeliveryLocation();
-    if (stored?.details?.locality) {
-      setLocation(stored.details.locality);
-    } else {
-      setLocation('Pimpri');
-    }
-    checkServiceArea(stored);
+    const label = stored?.details?.locality || stored?.details?.city;
+    if (label) setLocation(label);
 
     const handleLocationChange = (e: CustomEvent<AccurateLocationResult>) => {
-      if (e.detail?.details?.locality) {
-        setLocation(e.detail.details.locality);
-      }
-      checkServiceArea(e.detail);
-      setPreviewMode(false);
+      const next = e.detail?.details?.locality || e.detail?.details?.city;
+      if (next) setLocation(next);
     };
 
     window.addEventListener(RASAN_LOCATION_EVENT as any, handleLocationChange as any);
@@ -71,11 +59,8 @@ export default function Hero() {
         isOpen={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
         onSelectLocation={(loc) => {
-          if (loc.details.locality) {
-            setLocation(loc.details.locality);
-          }
-          checkServiceArea(loc);
-          setPreviewMode(false);
+          const next = loc.details.locality || loc.details.city;
+          if (next) setLocation(next);
         }}
       />
       <section className="relative bg-[#1A1A1A] pt-8 pb-6 md:py-32 overflow-hidden isolate">
@@ -203,28 +188,51 @@ export default function Hero() {
         </div>
       </section>
 
-      {/* Out of City Screen or Preview Notification */}
-      {isOutOfServiceArea && !previewMode ? (
+      {/* Service-area message: decided on the server, never shows another city's food as "near you". */}
+      {serviceStatus === 'unavailable' && (
         <section className="bg-white border-b border-gray-100">
           <CityUnavailable
-            cityName={outOfCityName}
-            onBrowsePreview={() => setPreviewMode(true)}
+            cityName={areaName || 'your area'}
+            onBrowsePreview={() => router.push('/meals?preview=pune')}
+            onChangeLocation={() => setIsLocationModalOpen(true)}
           />
         </section>
-      ) : isOutOfServiceArea && previewMode ? (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-center text-xs font-bold text-amber-900 flex items-center justify-center gap-2">
-          <Eye className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>
-            You are browsing Pune &amp; PCMC kitchens from <strong>{outOfCityName}</strong> in Preview Mode. Fresh food delivery is active within 10 km in Pune.
-          </span>
-          <button
-            onClick={() => setIsLocationModalOpen(true)}
-            className="underline ml-2 text-amber-800 hover:text-amber-950 font-black cursor-pointer"
-          >
-            Change Pin
-          </button>
-        </div>
-      ) : null}
+      )}
+
+      {serviceStatus === 'no-location' && (
+        <section className="bg-white border-b border-gray-100 px-4 py-14 text-center" aria-labelledby="set-location-heading">
+          <div className="max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mx-auto">
+              <MapPin className="w-7 h-7" aria-hidden="true" />
+            </div>
+            <h2 id="set-location-heading" className="text-2xl font-black text-gray-900 tracking-tight">
+              Set your delivery location
+            </h2>
+            <p className="text-sm text-gray-500 font-medium">
+              We deliver fresh home food within 10 km of each kitchen. Tell us where you are to see the kitchens near you.
+            </p>
+            <Button
+              onClick={() => setIsLocationModalOpen(true)}
+              className="h-12 px-8 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-black uppercase tracking-widest"
+            >
+              <MapPin className="w-4 h-4 mr-2" aria-hidden="true" /> Choose Location
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {serviceStatus === 'lookup-failed' && (
+        <section role="status" className="bg-amber-50 border-b border-amber-200 px-4 py-4 text-center text-sm font-bold text-amber-900 flex items-center justify-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+          We couldn&apos;t check which kitchens deliver to {areaName || 'your location'} right now. Please try again in a moment.
+        </section>
+      )}
+
+      {serviceStatus === 'available' && kitchenCount > 0 && (
+        <p className="sr-only" role="status">
+          {kitchenCount} kitchens deliver to {areaName || 'your location'}.
+        </p>
+      )}
     </>
   );
 }

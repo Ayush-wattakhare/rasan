@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
-import { getVendors, getCuisineTypes, type VendorFilters as VendorFiltersType } from '@/lib/services/vendor-service';
+import { type VendorFilters as VendorFiltersType } from '@/lib/services/vendor-service';
+import { resolveListingArea } from '@/lib/location/listing-area';
+import { PreviewBanner, ServiceAreaEmptyState } from '@/components/location/service-area-empty-state';
+import { sanitizeSearch } from '@/lib/utils/search';
 import VendorGrid from '@/components/vendors/vendor-grid';
 import VendorFilters from '@/components/vendors/vendor-filters';
 import { Input } from '@/components/ui/input';
@@ -26,13 +29,31 @@ export default async function VendorsPage({ searchParams }: PageProps) {
   const page = parsePageParam(params.page);
   const limit = 12;
 
-  const [vendorsResult, cuisineTypes] = await Promise.all([
-    getVendors(supabase, filters, page, limit),
-    getCuisineTypes(supabase),
-  ]);
+  // Only kitchens that deliver to the customer (or a labelled city preview),
+  // nearest first. Never an unfiltered list of every kitchen.
+  const listing = await resolveListingArea(supabase, params.preview);
+  const isPreview = listing.mode === 'preview';
+  const kitchens = listing.mode === 'empty' ? [] : listing.kitchens;
+
+  const cuisineTypes = Array.from(new Set(kitchens.flatMap((k) => k.cuisine || []))).sort();
+  const search = sanitizeSearch(filters.search).toLowerCase();
+  const matching = kitchens.filter((k) => {
+    if (filters.cuisineType && !(k.cuisine || []).includes(filters.cuisineType)) return false;
+    if (search) {
+      const text = `${k.business_name} ${k.description || ''} ${(k.cuisine || []).join(' ')}`.toLowerCase();
+      if (!text.includes(search)) return false;
+    }
+    return true;
+  });
+  const totalPages = Math.ceil(matching.length / limit);
+  const vendorsResult = {
+    vendors: matching.slice((page - 1) * limit, page * limit).map((k) => ({ ...k, is_active: true })),
+    total: matching.length,
+    totalPages,
+  };
 
   // A page past the end: go back to the first page of the same search.
-  if (page > 1 && vendorsResult.vendors.length === 0) {
+  if (listing.mode !== 'empty' && page > 1 && vendorsResult.vendors.length === 0) {
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (key !== 'page' && typeof value === 'string') qs.set(key, value);
@@ -73,6 +94,10 @@ export default async function VendorsPage({ searchParams }: PageProps) {
         <div className="bg-white p-2 sm:p-3 rounded-2xl sm:rounded-[2.5rem] shadow-[0_20px_60px_-10px_rgba(0,0,0,0.15)] border border-gray-100 flex flex-col md:flex-row gap-2 items-center mb-8 sm:mb-12">
           <div className="flex-1 w-full relative group">
              <form action="/vendors" className="flex items-center w-full">
+                {/* Keep a city preview when searching inside it. */}
+                {isPreview && typeof params.preview === 'string' && (
+                  <input type="hidden" name="preview" value={params.preview} />
+                )}
                 <div className="w-12 h-12 flex items-center justify-center text-gray-400">
                   <span className="text-xl">🔍</span>
                 </div>
@@ -114,14 +139,20 @@ export default async function VendorsPage({ searchParams }: PageProps) {
           <div className="flex-1 space-y-10">
             <div className="flex items-center justify-between border-b-2 border-gray-50 pb-6">
               <h2 className="text-2xl sm:text-3xl font-black text-[#1A1A1A] tracking-tighter uppercase italic flex items-center gap-4">
-                Elite Kitchens
+                {isPreview ? `Kitchens in ${listing.previewLabel}` : 'Kitchens Near You'}
                 <span className="text-xs sm:text-sm font-bold text-gray-400 border border-gray-100 px-3 py-1 rounded-xl">
-                  {vendorsResult.total} REGISTERED
+                  {vendorsResult.total} {isPreview ? 'IN PREVIEW' : 'DELIVER TO YOU'}
                 </span>
               </h2>
             </div>
 
-            {vendorsResult.vendors.length > 0 ? (
+            {isPreview && (
+              <PreviewBanner label={listing.previewLabel} city={listing.city} basePath="/vendors" />
+            )}
+
+            {listing.mode === 'empty' ? (
+              <ServiceAreaEmptyState status={listing.status} city={listing.city} previewHref="/vendors?preview=pune" />
+            ) : vendorsResult.vendors.length > 0 ? (
               <VendorGrid vendors={vendorsResult.vendors as any} />
             ) : (
               <div className="bg-white rounded-[3rem] p-24 text-center border-2 border-dashed border-gray-100">

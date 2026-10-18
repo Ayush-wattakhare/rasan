@@ -32,9 +32,11 @@ interface MealDetailsProps {
       rating: number | null;
     };
   };
+  /** Shown on a disabled Add to Cart, e.g. when the kitchen doesn't deliver to the customer. */
+  orderDisabledReason?: string | null;
 }
 
-export default function MealDetails({ meal }: MealDetailsProps) {
+export default function MealDetails({ meal, orderDisabledReason = null }: MealDetailsProps) {
   return (
     <div className="space-y-12">
       <div className="grid gap-12 lg:grid-cols-2">
@@ -141,6 +143,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
                   }}
                   size="lg"
                   showQuantity={true}
+                  disabledReason={orderDisabledReason}
                 />
              </div>
           </div>
@@ -212,6 +215,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
               }}
               size="default"
               showQuantity={false}
+              disabledReason={orderDisabledReason}
             />
           </div>
         </div>
