@@ -44,16 +44,6 @@ Rasan connects customers with local home chefs and kitchens for home-cooked meal
 
 ---
 
-## Getting started
-
-```bash
-git clone https://github.com/Ayush-wattakhare/rasan.git
-cd rasan
-npm install
-# create .env.local (see the Quick Start for the variables)
-npm run dev
-```
-
 Full setup, including the database and environment variables, is in **[docs/getting-started/QUICK_START.md](docs/getting-started/QUICK_START.md)**.
 
 > ⚠️ **Database migration required.** `supabase/migrations/003_security_hardening.sql` must be applied before deploying the current code. See [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md).
