@@ -1,106 +1,81 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import {
+  checkDateChangeable,
+  lastDeliveryDate,
+  loadOwnedSubscription,
+  notify,
+  requireStatus,
+  saveSubscription,
+} from '@/lib/subscriptions/manage';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** Restores a skipped day and removes the replacement meal that was added for it. */
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { id } = await params;
-    const body = await request.json();
-    const { date: targetDate } = body;
+    const loaded = await loadOwnedSubscription(id);
+    if (!loaded.ok) return loaded.response;
+    const { sub, userId } = loaded;
 
-    if (!targetDate) {
-      return NextResponse.json({ error: 'Target date is required' }, { status: 400 });
-    }
+    const body = await request.json().catch(() => ({}));
+    const targetDate = body?.date;
 
-    // Fetch subscription
-    const { data: subscription, error: fetchError } = await supabase
-      .from('subscriptions')
-      .select('*, vendors(id, business_name, user_id)')
-      .eq('id', id)
-      .single();
+    const statusError = requireStatus(
+      sub,
+      ['active', 'paused'],
+      'Deliveries can only be restored on active or paused subscriptions'
+    );
+    if (statusError) return statusError.response;
 
-    if (fetchError || !subscription) {
-      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
-    }
+    const dateError = checkDateChangeable(sub, targetDate);
+    if (dateError) return dateError.response;
 
-    if (subscription.customer_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const deliveries: any[] = subscription.deliveries || [];
-    const deliveryIndex = deliveries.findIndex((d) => d.date === targetDate);
-
-    if (deliveryIndex === -1) {
+    const deliveries = sub.deliveries.map((d) => ({ ...d }));
+    const index = deliveries.findIndex((d) => d.date === targetDate);
+    if (index === -1) {
       return NextResponse.json({ error: 'Delivery date not found' }, { status: 400 });
     }
-
-    if (deliveries[deliveryIndex].status !== 'skipped') {
+    if (deliveries[index].status !== 'skipped') {
       return NextResponse.json({ error: 'This date is not marked as skipped' }, { status: 400 });
     }
 
-    // Revert target delivery to scheduled
-    deliveries[deliveryIndex] = {
-      ...deliveries[deliveryIndex],
-      status: 'scheduled',
-      skip_reason: null,
-      skipped_at: null,
-    };
-
-    // Remove the extended replacement delivery that was appended for this date
-    const extendedIndex = deliveries.findIndex(
-      (d) => d.is_extended && d.replaced_date === targetDate
-    );
-
-    if (extendedIndex !== -1) {
-      deliveries.splice(extendedIndex, 1);
+    // The replacement meal must not have been cooked/delivered already.
+    const extensionIndex = deliveries.findIndex((d) => d.is_extended && d.replaced_date === targetDate);
+    if (extensionIndex !== -1 && deliveries[extensionIndex].status !== 'scheduled') {
+      return NextResponse.json(
+        { error: 'The replacement meal for this day was already used, so it cannot be restored.' },
+        { status: 409 }
+      );
     }
 
-    // Recalculate end date from the latest delivery remaining
-    const sortedDates = deliveries
-      .map((d) => new Date(d.date))
-      .sort((a, b) => a.getTime() - b.getTime());
+    deliveries[index] = { ...deliveries[index], status: 'scheduled', skip_reason: null, skipped_at: null };
+    if (extensionIndex !== -1) deliveries.splice(extensionIndex, 1);
 
-    const latestDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1].toISOString().split('T')[0] : subscription.end_date;
+    const saved = await saveSubscription(sub, {
+      deliveries,
+      end_date: lastDeliveryDate(deliveries, sub.end_date),
+    });
+    if (!saved.ok) return saved.response;
 
-    // end_date is not user-writable (migration 003); ownership was checked above.
-    const serviceClient = createServiceClient();
-    const { data: updatedSubscription, error: updateError } = await serviceClient
-      .from('subscriptions')
-      .update({
-        deliveries,
-        end_date: latestDate,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('customer_id', user.id)
-      .select('*, vendors(id, business_name)')
-      .single();
-
-    if (updateError) {
-      return NextResponse.json({ error: 'Failed to update subscription' }, { status: 500 });
-    }
+    await notify(userId, {
+      type: 'system',
+      title: 'Delivery Restored',
+      message: `Your meal for ${targetDate} is back on the schedule.`,
+      data: { subscription_id: id, date: targetDate },
+    });
+    await notify(sub.vendors?.user_id, {
+      type: 'order',
+      title: 'Off-Day Cancelled',
+      message: `A subscriber restored their meal for ${targetDate}. Please prepare it as usual.`,
+      data: { subscription_id: id, date: targetDate },
+    });
 
     return NextResponse.json({
       success: true,
       message: `Delivery resumed for ${targetDate}`,
-      subscription: updatedSubscription,
+      subscription: saved.subscription,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error in POST /api/subscriptions/[id]/unskip-day:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -2,12 +2,17 @@
 
 import { Check, Flame, Trophy, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { calculateSubscriptionPricing } from '@/lib/pricing/subscription-pricing';
+import { defaultPlanStart } from '@/lib/pricing/plan-schedule';
+import { DEFAULT_DELIVERY_DAYS } from '@/lib/pricing/order-pricing';
 
 interface PlanSelectorProps {
   planPricing?: any[];
   selectedPlanType: string;
   selectedMealType: string;
   deliveryDaysCount?: number;
+  deliveryDays?: string[];
+  startDate?: string;
   onPlanChange: (planType: string, mealType: string) => void;
 }
 
@@ -16,6 +21,8 @@ export default function PlanSelector({
   selectedPlanType,
   selectedMealType,
   deliveryDaysCount = 6,
+  deliveryDays,
+  startDate,
   onPlanChange,
 }: PlanSelectorProps) {
   const formatCurrency = (amount: number) => {
@@ -63,41 +70,19 @@ export default function PlanSelector({
     },
   ];
 
+  // Same pricing as the server: price follows the number of scheduled meals.
   const getPlanPricingDetails = (planType: string, mealType: string) => {
-    const days = Math.max(1, deliveryDaysCount);
-    const baseMealPrices: Record<string, number> = {
-      breakfast: 100,
-      lunch: 150,
-      dinner: 150,
-      all: 350,
-    };
-    const basePerMeal = baseMealPrices[mealType] || 150;
-
-    let multiplier = days;
-    let discountPct = 0;
-
-    if (planType === 'weekly') {
-      discountPct = 20;
-      multiplier = days;
-    } else if (planType === 'monthly') {
-      discountPct = 30;
-      multiplier = days * 4;
-    } else {
-      discountPct = 0;
-      multiplier = 1;
-    }
-
-    const basePrice = basePerMeal * multiplier;
-    const savings = Math.round((basePrice * discountPct) / 100);
-    const finalPrice = Math.max(0, basePrice - savings);
-
+    const days = deliveryDays && deliveryDays.length > 0
+      ? deliveryDays
+      : DEFAULT_DELIVERY_DAYS.slice(0, Math.max(1, deliveryDaysCount));
+    const p = calculateSubscriptionPricing(planType, mealType, days, startDate || defaultPlanStart());
     return {
-      basePrice,
-      savings,
-      finalPrice,
-      discountPct,
-      multiplier,
-      perMeal: multiplier > 0 ? Math.round(finalPrice / multiplier) : basePerMeal,
+      basePrice: p.basePrice,
+      savings: p.savings,
+      finalPrice: p.finalPrice,
+      discountPct: p.discountPct,
+      multiplier: p.mealCount,
+      perMeal: p.mealCount > 0 ? Math.round(p.finalPrice / p.mealCount) : p.basePerMeal,
     };
   };
 

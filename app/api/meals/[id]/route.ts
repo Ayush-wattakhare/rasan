@@ -1,37 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 
-const EDITABLE_MEAL_FIELDS = [
-  'name',
-  'description',
-  'category',
-  'meal_type',
-  'price',
-  'discount_price',
-  'image_url',
-  'ingredients',
-  'allergens',
-  'nutritional_info',
-  'is_veg',
-  'is_available',
-  'stock',
-  'preparation_time',
-] as const;
-
-function pickMealUpdates(body: any): { values: Record<string, unknown> } | { error: string } {
-  const values: Record<string, unknown> = {};
-  for (const field of EDITABLE_MEAL_FIELDS) {
-    if (body && body[field] !== undefined) values[field] = body[field];
-  }
-  for (const field of ['price', 'discount_price', 'stock', 'preparation_time'] as const) {
-    if (values[field] === undefined || values[field] === null) continue;
-    const n = Number(values[field]);
-    if (!Number.isFinite(n) || n < 0) return { error: `Invalid ${field}` };
-    values[field] = n;
-  }
-  if (Object.keys(values).length === 0) return { error: 'No editable fields provided' };
-  return { values };
-}
+import { checkDiscount, validateMealInput } from '@/lib/validation/meal';
 
 export async function PATCH(
   request: NextRequest,
@@ -57,7 +27,7 @@ export async function PATCH(
     // Get the meal to verify ownership
     const { data: meal, error: mealError } = await serviceSupabase
       .from('meals')
-      .select('vendor_id, vendors!inner(user_id)')
+      .select('vendor_id, price, discount_price, vendors!inner(user_id)')
       .eq('id', mealId)
       .single();
 
@@ -76,10 +46,18 @@ export async function PATCH(
       );
     }
 
-    // Allow-list editable fields; ownership, id, rating and timestamps never change here.
-    const updates = pickMealUpdates(body);
+    // Allow-list + type-check editable fields; ownership, id, rating and
+    // timestamps never change here. (A blank price used to write NULL.)
+    const updates = validateMealInput(body, true);
     if ('error' in updates) {
       return NextResponse.json({ error: updates.error }, { status: 400 });
+    }
+    const discountError = checkDiscount(
+      updates.values.price ?? meal.price,
+      'discount_price' in updates.values ? updates.values.discount_price : meal.discount_price
+    );
+    if (discountError) {
+      return NextResponse.json({ error: discountError }, { status: 400 });
     }
 
     // Update the meal using service client to bypass RLS

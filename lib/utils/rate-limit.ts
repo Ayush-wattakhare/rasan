@@ -14,16 +14,22 @@ interface RateLimitStore {
 // On serverless (Vercel), this store is instance-scoped, so the window
 // is not globally enforced across concurrent cold-start instances.
 const store: RateLimitStore = {};
+const MAX_KEYS = 10_000;
+let keyCount = 0;
 
-// Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  Object.keys(store).forEach((key) => {
+function sweepExpired(now: number) {
+  for (const key of Object.keys(store)) {
     if (store[key].resetTime < now) {
       delete store[key];
+      keyCount--;
     }
-  });
-}, 5 * 60 * 1000);
+  }
+}
+
+// Clean up old entries every 5 minutes. unref() so the timer never keeps a
+// serverless worker or test process alive.
+const sweepTimer = setInterval(() => sweepExpired(Date.now()), 5 * 60 * 1000);
+(sweepTimer as { unref?: () => void }).unref?.();
 
 export interface RateLimitOptions {
   interval: number; // Time window in milliseconds
@@ -48,6 +54,11 @@ export function rateLimit(
   const key = `${identifier}`;
 
   if (!store[key] || store[key].resetTime < now) {
+    if (!store[key]) {
+      // Keys can be attacker-influenced (ids in URLs): keep the store bounded.
+      if (keyCount >= MAX_KEYS) sweepExpired(now);
+      keyCount++;
+    }
     store[key] = {
       count: 1,
       resetTime: now + options.interval,

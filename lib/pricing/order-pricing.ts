@@ -1,9 +1,14 @@
 import type { SubscriptionType } from '@/types';
+import { defaultPlanStart, planMealCount } from '@/lib/pricing/plan-schedule';
 
 /**
  * Order pricing shared by the cart UI and the order API.
  * The API recomputes every total from database meal prices with these
  * functions; amounts sent by the browser are never trusted.
+ *
+ * Subscription items are priced per scheduled meal: the meal count comes from
+ * the real delivery schedule (plan-schedule.ts), so customers pay for exactly
+ * the meals that get delivered.
  */
 
 export const PLATFORM_FEE = 2;
@@ -25,28 +30,43 @@ export const WEEKDAYS = [
   'sunday',
 ] as const;
 
+/** Default delivery days for a new cart item / plan (everyday). */
+export const DEFAULT_DELIVERY_DAYS: string[] = [...WEEKDAYS];
+
 export type PricingInput = {
   price: number;
   quantity: number;
   subscription_type?: SubscriptionType;
   delivery_days?: string[];
+  /** First delivery date (YYYY-MM-DD, IST) for weekly / monthly items. */
+  plan_start_date?: string;
 };
+
+function formatStart(date: string): string {
+  // e.g. "Tue 21 Oct" (UTC on a date string, so it's the same everywhere)
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
+}
 
 export function getItemPricing(item: PricingInput) {
   const subType: SubscriptionType = item.subscription_type || 'one-time';
   const price = Math.round(Number(item.price) || 0);
   const quantity = Math.max(1, item.quantity || 1);
   const daysCount = Math.max(1, (item.delivery_days || []).length);
+  const planStart = subType === 'one-time' ? null : item.plan_start_date || defaultPlanStart();
 
   let multiplier = 1;
   let cycleDescription = '1 meal';
 
-  if (subType === 'weekly') {
-    multiplier = daysCount; // Delivers on each selected day in the week
-    cycleDescription = `${daysCount} meal${daysCount > 1 ? 's' : ''} (${daysCount} days/wk)`;
-  } else if (subType === 'monthly') {
-    multiplier = daysCount * 4; // 4 weeks of selected delivery days
-    cycleDescription = `${daysCount * 4} meals (${daysCount} days/wk × 4 wks)`;
+  if (subType !== 'one-time' && planStart) {
+    multiplier = planMealCount(subType, planStart, item.delivery_days);
+    cycleDescription =
+      `${multiplier} meal${multiplier === 1 ? '' : 's'} · ${daysCount} day${daysCount === 1 ? '' : 's'}/wk` +
+      ` · starts ${formatStart(planStart)}`;
   }
 
   const discountPct = SUBSCRIPTION_DISCOUNT_PCT[subType] ?? 0;
@@ -59,6 +79,8 @@ export function getItemPricing(item: PricingInput) {
     subType,
     daysCount,
     multiplier,
+    mealCount: multiplier,
+    planStartDate: planStart,
     discountPct,
     basePrice,
     savings,

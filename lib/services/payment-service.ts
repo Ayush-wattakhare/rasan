@@ -41,8 +41,8 @@ export class PaymentService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || error.message || 'Failed to create payment order');
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || error.message || `Failed to create payment order (${response.status})`);
     }
 
     return response.json();
@@ -66,8 +66,8 @@ export class PaymentService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || error.message || 'Failed to create payment intent');
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || error.message || `Failed to create payment intent (${response.status})`);
     }
 
     return response.json();
@@ -92,8 +92,8 @@ export class PaymentService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || error.message || 'Payment verification failed');
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || error.message || `Payment verification failed (${response.status})`);
     }
 
     return response.json();

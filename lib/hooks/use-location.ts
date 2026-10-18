@@ -53,31 +53,34 @@ export function setStoredDeliveryLocation(location: AccurateLocationResult): voi
 /**
  * Reverse geocode latitude and longitude to address details using OpenStreetMap Nominatim
  */
-export async function reverseGeocode(lat: number, lng: number): Promise<LocationDetails> {
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal
+): Promise<LocationDetails> {
+  // Never invent a place: if lookup fails, show the raw coordinates only.
   let details: LocationDetails = {
-    locality: 'Pimpri',
-    full_address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+    full_address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
   };
 
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-      { headers: { 'User-Agent': 'Rasan-Food-Delivery-App' } }
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&zoom=18&accept-language=en`,
+      { signal }
     );
     if (res.ok) {
       const data = await res.json();
       const addr = data.address || {};
 
       const road = addr.road || addr.street || addr.pedestrian || addr.path || '';
-      const house = addr.house_number || addr.building || '';
+      const house = addr.house_number || '';
       const street = [house, road].filter(Boolean).join(' ') || addr.suburb || addr.neighbourhood || '';
 
-      const city = addr.city || addr.town || addr.village || addr.city_district || addr.county || 'Pune';
-      const state = addr.state || addr.region || 'Maharashtra';
-      const zip_code = addr.postcode || addr.postal_code || '';
-      
-      // Best locality determination (e.g., Pimpri, Rahatani, Wakad, Chinchwad)
-      const locality = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || addr.city_district || addr.town || city || 'Pimpri';
+      const city = addr.city || addr.town || addr.village || addr.city_district || addr.county || '';
+      const state = addr.state || addr.region || '';
+      const zip_code = addr.postcode || '';
+      const locality =
+        addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || addr.city_district || addr.town || city || '';
 
       details = {
         street,
@@ -85,14 +88,88 @@ export async function reverseGeocode(lat: number, lng: number): Promise<Location
         state,
         zip_code,
         locality,
-        full_address: data.display_name || `${locality}, ${city}, ${state}`,
+        building: addr.building || addr.amenity || '',
+        full_address: data.display_name || details.full_address,
       };
     }
-  } catch (e) {
-    console.warn('Reverse geocoding failed, returning fallback coordinates:', e);
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
+    console.warn('Reverse geocoding failed, showing coordinates only:', e);
   }
 
   return details;
+}
+
+/** Converts a GeolocationPositionError (or anything) into a user-facing message. */
+export function describeGeolocationError(err: any): string {
+  switch (err?.code) {
+    case 1:
+      return 'Location permission is blocked. Allow location access for this site in your browser settings, then try again.';
+    case 2:
+      return 'Your device could not determine its position. Turn on GPS / Location services and try again.';
+    case 3:
+      return 'Getting your location took too long. Move near a window or open area and try again.';
+    default:
+      return err?.message || 'Could not detect your current location.';
+  }
+}
+
+/**
+ * Watches the device position for a short window and resolves with the most
+ * accurate fix. The first fix a browser returns is often a coarse Wi-Fi/IP
+ * estimate (hundreds of metres to kilometres off); waiting a few seconds lets
+ * GPS lock on. Resolves early once accuracy is within `targetAccuracy` metres.
+ */
+export function getBestPosition(options?: {
+  targetAccuracy?: number;
+  maxWaitMs?: number;
+  onProgress?: (pos: GeolocationPosition) => void;
+}): Promise<GeolocationPosition> {
+  const targetAccuracy = options?.targetAccuracy ?? 30;
+  const maxWaitMs = options?.maxWaitMs ?? 12000;
+
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      reject(new Error('Geolocation is not supported by your browser or device.'));
+      return;
+    }
+    if (!window.isSecureContext) {
+      reject(new Error('Live location needs a secure (https) connection.'));
+      return;
+    }
+
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+
+    const finish = (result?: GeolocationPosition, error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timer);
+      if (result) resolve(result);
+      else reject(error);
+    };
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) {
+          best = pos;
+          options?.onProgress?.(pos);
+        }
+        if (pos.coords.accuracy <= targetAccuracy) finish(pos);
+      },
+      (err) => {
+        // Keep waiting on transient errors if we already have a fix.
+        if (err.code === 1 || !best) finish(undefined, err);
+      },
+      { enableHighAccuracy: true, timeout: maxWaitMs, maximumAge: 0 }
+    );
+
+    const timer = setTimeout(() => {
+      if (best) finish(best);
+      else finish(undefined, { code: 3, message: 'Location request timed out.' });
+    }, maxWaitMs);
+  });
 }
 
 /**
@@ -133,44 +210,23 @@ export async function searchLocations(query: string): Promise<Array<{
 /**
  * Perform high-accuracy geolocation lookup with automatic retry and reverse geocoding
  */
-export async function getAccurateLocation(): Promise<AccurateLocationResult> {
-  if (typeof window === 'undefined' || !('geolocation' in navigator)) {
-    throw new Error('Geolocation is not supported by your browser or device.');
-  }
-
-  const getPosition = (highAccuracy: boolean): Promise<GeolocationPosition> => {
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(
-        resolve,
-        reject,
-        {
-          enableHighAccuracy: highAccuracy,
-          timeout: highAccuracy ? 10000 : 15000,
-          maximumAge: 5000,
-        }
-      );
-    });
-  };
-
+export async function getAccurateLocation(options?: {
+  /** Save as the app-wide delivery location (default true). */
+  persist?: boolean;
+  onProgress?: (pos: GeolocationPosition) => void;
+}): Promise<AccurateLocationResult> {
   let position: GeolocationPosition;
   try {
-    // Try high accuracy mode first
-    position = await getPosition(true);
-  } catch (err: any) {
-    // Fallback to standard accuracy if high accuracy timed out
-    if (err.code === GeolocationPositionError.TIMEOUT) {
-      console.warn('High accuracy GPS timed out, falling back to standard accuracy.');
-      position = await getPosition(false);
-    } else {
-      throw err;
-    }
+    position = await getBestPosition({ onProgress: options?.onProgress });
+  } catch (err) {
+    throw new Error(describeGeolocationError(err));
   }
 
   const { latitude: lat, longitude: lng, accuracy } = position.coords;
   const details = await reverseGeocode(lat, lng);
 
   const result: AccurateLocationResult = { lat, lng, accuracy, details };
-  setStoredDeliveryLocation(result);
+  if (options?.persist !== false) setStoredDeliveryLocation(result);
   return result;
 }
 
@@ -206,10 +262,7 @@ export function useLocation() {
       setLocation(result);
       return result;
     } catch (err: any) {
-      let msg = 'Failed to detect location.';
-      if (err.code === 1) msg = 'Location permission denied. Please allow GPS access.';
-      else if (err.code === 2) msg = 'GPS signal unavailable. Please try moving to an open area.';
-      else if (err.code === 3) msg = 'Location request timed out. Retrying...';
+      const msg = err?.message || 'Failed to detect location.';
       setError(msg);
       throw new Error(msg);
     } finally {

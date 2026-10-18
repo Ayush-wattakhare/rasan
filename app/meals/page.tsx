@@ -9,6 +9,10 @@ import SortDropdown from '@/components/meals/sort-dropdown';
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { parsePageParam } from '@/lib/utils/search';
+
+const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -18,22 +22,36 @@ export default async function MealsPage({ searchParams }: PageProps) {
   const supabase = await createClient();
   const params = await searchParams;
 
-  // Parse filters
+  // Parse filters (param names match components/meals/horizontal-preferences.tsx)
+  const mealType = typeof params.mealType === 'string' && MEAL_TYPES.includes(params.mealType as MealType)
+    ? (params.mealType as MealType)
+    : undefined;
   const filters: MealFiltersType = {
     category: typeof params.category === 'string' ? params.category : undefined,
-    mealType: typeof params.mealType === 'string' ? params.mealType as MealType : undefined,
-    isVegetarian: typeof params.isVegetarian === 'string' ? params.isVegetarian === 'true' : undefined,
+    mealType,
+    // Only "true" filters; the toggle being off means "all meals", not "non-veg only".
+    isVegetarian: params.isVegetarian === 'true' ? true : undefined,
+    cuisine: typeof params.cuisine === 'string' ? params.cuisine.slice(0, 40) : undefined,
     search: typeof params.search === 'string' ? params.search : undefined,
     sortBy: (typeof params.sortBy === 'string' ? params.sortBy : undefined) as MealFiltersType['sortBy'],
   };
 
-  const page = typeof params.page === 'string' ? parseInt(params.page) : 1;
+  const page = parsePageParam(params.page);
   const limit = 12;
 
   const [mealsResult, categories] = await Promise.all([
     getMeals(supabase, filters, page, limit),
     getMealCategories(supabase),
   ]);
+
+  // A page past the end (old link, fewer results now): go to the first page.
+  if (page > 1 && mealsResult.meals.length === 0) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key !== 'page' && typeof value === 'string') qs.set(key, value);
+    }
+    redirect(qs.toString() ? `/meals?${qs}` : '/meals');
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] pb-32">

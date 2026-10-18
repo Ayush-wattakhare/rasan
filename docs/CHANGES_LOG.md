@@ -2,6 +2,32 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-17] - Mobile UI/UX Polish: Drawer Close De-Duplication, Public Menu Browsing & Header Streamlining
+
+- **Date & Time:** 2026-10-17 05:15 IST
+- **Objective:** Fix visual and navigational friction on mobile devices: eliminate the duplicate `X` close button rendered in the mobile navigation drawer, unlock public browsing access for `/meals` and `/cart` so prospective customers can explore menus without being blocked by an immediate login prompt, streamline the mobile guest header to prevent crowding the location selector pill, compact the mobile hero section so appetizing dishes peek above the fold, and add tactile `active:scale-95` tap feedback.
+- **Implementation Plan:**
+  1. Add `hideDefaultClose?: boolean` to `SheetContent` in `components/ui/sheet.tsx` and pass `hideDefaultClose` from `components/layout/mobile-nav.tsx` to eliminate the duplicate close button.
+  2. In `lib/auth/roles.ts`, remove `/meals` and `/cart` from `isProtectedPath()` and make them public discovery routes, retaining authentication protection for `/checkout` and `/notifications`.
+  3. In `lib/supabase/middleware.ts`, add fast-path bypass for `/meals`, `/cart`, and `/vendors` to skip remote auth roundtrips for catalog visitors.
+  4. In `components/layout/header.tsx`, hide the redundant guest "Join Now" CTA on `<sm` mobile viewports (`hidden sm:inline-flex`), expanding the location selector pill to `max-w-[120px]` with clear typography and tactile feedback.
+  5. In `components/home/hero.tsx`, compact mobile vertical spacing (`pt-8 pb-6`, `space-y-6 sm:space-y-10`) and scale mobile headings so food cards are visible above the fold. Add `active:scale-95` to category chips.
+  6. Update unit tests in `__tests__/lib/auth/roles.test.ts` to assert public menu accessibility and protected checkout routes.
+- **Files Modified / Created:**
+  - `components/ui/sheet.tsx` - Added `hideDefaultClose` prop to prevent duplicate close buttons.
+  - `components/layout/mobile-nav.tsx` - Passed `hideDefaultClose` to `SheetContent`.
+  - `lib/auth/roles.ts` - Made `/meals` and `/cart` public discovery routes while protecting `/checkout` and `/notifications`.
+  - `lib/supabase/middleware.ts` - Added fast-path public bypass for meals, cart, and vendors.
+  - `components/layout/header.tsx` - Streamlined guest mobile header and expanded location pill.
+  - `components/home/hero.tsx` - Compacted mobile hero spacing, typography, and added tactile category interactions.
+  - `__tests__/lib/auth/roles.test.ts` - Added tests for public menu routes and protected shared routes (120/120 passing).
+  - `components/location/city-unavailable.tsx` - Migrated raw `<a>` to Next.js `<Link>` to resolve ESLint rule `@next/next/no-html-link-for-pages`.
+  - `docs/CHANGES_LOG.md` - Added implementation entry.
+- **Status:** Completed
+- **Verification / Testing:** `npm test` passed 10/10 test suites (120/120 unit/integration tests). `npm run build` compiled 99/99 routes cleanly with exit code 0.
+
+---
+
 ### [2026-10-17] - Notification Page Loading Optimization: SSR Pre-Fetching & Realtime Hydration
 
 - **Date & Time:** 2026-10-17 04:45 IST

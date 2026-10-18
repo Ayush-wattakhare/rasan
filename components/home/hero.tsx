@@ -78,7 +78,7 @@ export default function Hero() {
           setPreviewMode(false);
         }}
       />
-      <section className="relative bg-[#1A1A1A] pt-12 pb-10 md:py-32 overflow-hidden isolate">
+      <section className="relative bg-[#1A1A1A] pt-8 pb-6 md:py-32 overflow-hidden isolate">
         {/* Dynamic Background */}
         <div className="absolute inset-0 z-0">
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-orange-600/10 rounded-full blur-[120px] -mr-64 -mt-64 animate-pulse"></div>
@@ -87,25 +87,25 @@ export default function Hero() {
         </div>
         
         <div className="container mx-auto px-4 relative z-10">
-          <div className="flex flex-col items-center text-center max-w-5xl mx-auto space-y-10">
+          <div className="flex flex-col items-center text-center max-w-5xl mx-auto space-y-6 sm:space-y-10">
             {/* Animated Badge */}
-            <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
-              <span className="relative flex h-2.5 w-2.5">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-5 sm:py-2.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
+              <span className="relative flex h-2 w-2 sm:h-2.5 sm:w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-orange-500"></span>
               </span>
-              <span className="text-sm font-black text-orange-400 uppercase tracking-[0.2em]">Rasan Premium Home Tiffins</span>
+              <span className="text-xs sm:text-sm font-black text-orange-400 uppercase tracking-[0.2em]">Rasan Premium Home Tiffins</span>
             </div>
 
             {/* Epic Heading */}
-            <div className="space-y-3">
-              <h1 className="text-[2.4rem] leading-[1.05] sm:text-5xl md:text-8xl font-black text-white tracking-tighter italic">
+            <div className="space-y-2 sm:space-y-3">
+              <h1 className="text-[1.95rem] leading-[1.05] sm:text-5xl md:text-8xl font-black text-white tracking-tighter italic">
                 FORGET MESS, <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-red-500 to-orange-500">
                   EAT LIKE HOME.
                 </span>
               </h1>
-              <p className="text-base md:text-2xl text-gray-400 max-w-3xl mx-auto font-medium leading-relaxed">
+              <p className="text-sm sm:text-base md:text-2xl text-gray-400 max-w-3xl mx-auto font-medium leading-relaxed">
                 Ditch the commercial taste. Indulge in authentic, healthy, and heart-crafted meals by India&apos;s finest home chefs.
               </p>
             </div>
@@ -165,7 +165,7 @@ export default function Hero() {
                 <Link
                   key={item.id}
                   href={item.id === 'vendors' ? '/vendors' : `/meals?category=${item.id}`}
-                  className="snap-start shrink-0 bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-white font-bold hover:bg-white/10 hover:border-orange-500/50 transition-all flex items-center gap-2 min-h-[48px]"
+                  className="snap-start shrink-0 bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-white font-bold hover:bg-white/10 hover:border-orange-500/50 active:scale-95 transition-all flex items-center gap-2 min-h-[48px]"
                 >
                   <span>{item.icon}</span>
                   <span className="text-xs uppercase tracking-[0.15em] whitespace-nowrap">{item.label}</span>
@@ -174,7 +174,7 @@ export default function Hero() {
             </div>
 
             {/* Real-time Trust indicators */}
-            <div className="grid grid-cols-3 gap-4 sm:gap-12 pt-8 border-t border-white/5 w-full max-w-2xl">
+            <div className="grid grid-cols-3 gap-4 sm:gap-12 pt-5 sm:pt-8 border-t border-white/5 w-full max-w-2xl">
               <div className="text-center group">
                 <div className="text-2xl sm:text-3xl font-black text-white group-hover:text-orange-500 transition-colors">500+</div>
                 <div className="text-[0.6rem] font-black text-gray-500 uppercase tracking-widest mt-1">Home Kitchens</div>

@@ -2,6 +2,7 @@
 
 import { MapPin, Rocket, Bell } from 'lucide-react';
 import { useState } from 'react';
+import Link from 'next/link';
 
 interface CityUnavailableProps {
   /** City/area name detected from user GPS reverse-geocode */
@@ -96,12 +97,12 @@ export function CityUnavailable({ cityName, onBrowsePreview }: CityUnavailablePr
               🍱 Browse Pune Menus (Preview Mode)
             </button>
           ) : (
-            <a
+            <Link
               href="/vendors"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors"
             >
               🍱 Browse Pune Menus (Read-only)
-            </a>
+            </Link>
           )}
         </div>
       </div>

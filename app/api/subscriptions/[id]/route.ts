@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { sanitizeDeliveryAddress } from '@/lib/utils/address';
 import { NextResponse } from 'next/server';
 
 export async function GET(
@@ -67,17 +68,20 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
 
     // Verify ownership
     const { data: existing } = await supabase
       .from('subscriptions')
-      .select('customer_id')
+      .select('customer_id, status')
       .eq('id', id)
       .single();
 
     if (!existing || existing.customer_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (existing.status === 'cancelled' || existing.status === 'completed') {
+      return NextResponse.json({ error: 'This subscription can no longer be changed' }, { status: 400 });
     }
 
     // Only schedule preferences are editable here. Status changes use the
@@ -89,17 +93,23 @@ export async function PUT(
     if (typeof body?.auto_renew === 'boolean') {
       updates.auto_renew = body.auto_renew;
     }
-    if (body?.address && typeof body.address === 'object' && !Array.isArray(body.address)) {
-      updates.address = body.address;
+    if (body?.address !== undefined) {
+      const address = sanitizeDeliveryAddress(body.address);
+      if (!address) {
+        return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
+      }
+      updates.address = address;
     }
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No editable fields provided' }, { status: 400 });
     }
 
-    const { data: subscription, error } = await supabase
+    // Customers have no direct write access (migration 006); ownership checked above.
+    const { data: subscription, error } = await createServiceClient()
       .from('subscriptions')
-      .update(updates)
+      .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('customer_id', user.id)
       .select()
       .single();
 

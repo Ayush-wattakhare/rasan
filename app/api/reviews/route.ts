@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Verify order exists and belongs to user
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
-      .select('id, customer_id, status, vendor_id, items')
+      .select('id, customer_id, status, items')
       .eq('id', orderId)
       .single();
 
@@ -44,15 +44,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'You can review an order after it is delivered' }, { status: 400 });
     }
 
-    // The rated kitchen is always the order's kitchen, never a client-supplied id.
-    const vendorId = order.vendor_id;
-
     const firstMealId = (order.items as any)?.[0]?.meal_id;
     if (!firstMealId) {
       return NextResponse.json({ error: 'Order has no items to review' }, { status: 400 });
     }
 
-    // Insert or update review record matching DB schema
+    // One review per order (decision 4): attached to the order's first meal.
+    // Meal and kitchen averages are recalculated by database triggers (migration 006).
     const { data: review, error: reviewError } = await serviceClient
       .from('reviews')
       .upsert({
@@ -74,31 +72,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Recalculate the kitchen's average across reviews of all its meals
-    if (vendorId) {
-      const { data: vendorMeals } = await serviceClient
-        .from('meals')
-        .select('id')
-        .eq('vendor_id', vendorId);
-      const mealIds = (vendorMeals || []).map((m) => m.id);
-
-      if (mealIds.length > 0) {
-        const { data: vendorReviews } = await serviceClient
-          .from('reviews')
-          .select('rating')
-          .in('meal_id', mealIds);
-
-        if (vendorReviews && vendorReviews.length > 0) {
-          const totalScore = vendorReviews.reduce((sum, r) => sum + (r.rating || 0), 0);
-          const avgRating = Number((totalScore / vendorReviews.length).toFixed(1));
-          await serviceClient.from('vendors').update({ rating: avgRating }).eq('id', vendorId);
-        }
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      message: 'Review and rating submitted successfully! Vendor rating updated.',
+      message: 'Review and rating submitted successfully!',
       review,
     });
   } catch (error: any) {

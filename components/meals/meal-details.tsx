@@ -17,7 +17,7 @@ interface MealDetailsProps {
     description: string;
     price: number;
     image_url: string | null;
-    is_vegetarian: boolean;
+    is_veg: boolean | null;
     is_available: boolean;
     stock: number | null;
     meal_type: string;
@@ -69,7 +69,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
               <span className="px-3 py-1 rounded-full bg-orange-600/10 text-orange-600 text-[0.65rem] font-black uppercase tracking-[0.2em] italic">
                 {meal.meal_type}
               </span>
-              {meal.is_vegetarian && (
+              {meal.is_veg && (
                 <span className="px-3 py-1 rounded-full bg-green-600/10 text-green-600 text-[0.65rem] font-black uppercase tracking-[0.2em] italic">
                   🌱 100% Veg
                 </span>
@@ -93,12 +93,22 @@ export default function MealDetails({ meal }: MealDetailsProps) {
             <div className="flex flex-col">
                <span className="text-[0.6rem] font-black uppercase tracking-widest text-gray-400 mb-1">Chef Rating</span>
                <div className="flex items-center gap-2">
-                 <span className="text-3xl font-black text-[#1A1A1A] tracking-tighter">{(meal.rating || 4.8).toFixed(1)}</span>
-                 <div className="flex gap-0.5">
-                   {[1,2,3,4,5].map(i => (
-                     <span key={i} className="text-orange-500 text-sm">★</span>
-                   ))}
-                 </div>
+                 <span className="text-3xl font-black text-[#1A1A1A] tracking-tighter">
+                   {Number(meal.rating) > 0 ? Number(meal.rating).toFixed(1) : 'New'}
+                 </span>
+                 {Number(meal.rating) > 0 && (
+                   <div className="flex gap-0.5" aria-label={`${Number(meal.rating).toFixed(1)} out of 5`}>
+                     {[1, 2, 3, 4, 5].map((i) => (
+                       <span
+                         key={i}
+                         aria-hidden="true"
+                         className={`text-sm ${i <= Math.round(Number(meal.rating)) ? 'text-orange-500' : 'text-gray-200'}`}
+                       >
+                         ★
+                       </span>
+                     ))}
+                   </div>
+                 )}
                </div>
             </div>
             
@@ -113,7 +123,6 @@ export default function MealDetails({ meal }: MealDetailsProps) {
           <div className="p-5 sm:p-8 rounded-[2rem] bg-white border border-gray-100 shadow-xl space-y-4">
              <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-black text-[#1A1A1A] tracking-tighter">{formatCurrency(meal.price)}</span>
-                <span className="text-sm font-bold text-gray-400 uppercase tracking-widest italic line-through">₹{(meal.price * 1.2).toFixed(0)}</span>
              </div>
              <p className="text-gray-500 leading-relaxed font-medium">
                {meal.description || "A delicately balanced home-cooked meal prepared with secret family spices and farm-fresh ingredients."}
@@ -126,7 +135,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
                     name: meal.name,
                     price: meal.price,
                     image_url: meal.image_url,
-                    is_veg: meal.is_vegetarian,
+                    is_veg: meal.is_veg === true,
                     is_available: meal.is_available,
                     stock: meal.stock,
                   }}
@@ -197,7 +206,7 @@ export default function MealDetails({ meal }: MealDetailsProps) {
                 name: meal.name,
                 price: meal.price,
                 image_url: meal.image_url,
-                is_veg: meal.is_vegetarian,
+                is_veg: meal.is_veg === true,
                 is_available: meal.is_available,
                 stock: meal.stock,
               }}

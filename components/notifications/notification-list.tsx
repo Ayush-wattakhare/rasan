@@ -82,12 +82,15 @@ export default function NotificationList({ userId, initialNotifications }: Notif
   }, [userId]);
 
   const markAllAsRead = async () => {
+    const previous = notifications;
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
 
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
-    } catch (err) {
-      console.warn('Error marking all notifications read:', err);
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (!res.ok) setNotifications(previous);
+    } catch {
+      // Undo the optimistic change so the list reflects what's actually saved.
+      setNotifications(previous);
     }
   };
 

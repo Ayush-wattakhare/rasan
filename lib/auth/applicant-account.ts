@@ -67,7 +67,7 @@ export async function resolveApplicantAccount(input: ApplicantInput): Promise<Ap
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name: input.name, phone: input.phone || '' } },
+    options: { data: { name: input.name, phone: input.phone?.trim() || null } },
   });
 
   // Supabase returns a user with no identities when the email is already registered.
@@ -89,21 +89,34 @@ export async function resolveApplicantAccount(input: ApplicantInput): Promise<Ap
     return {
       ok: false,
       response: NextResponse.json(
-        { error: error?.message || 'Could not create account' },
+        { error: 'Could not create account. Check your email and password and try again.' },
         { status: 400 }
       ),
     };
   }
 
-  await serviceSupabase.from('profiles').upsert({
+  const { error: profileError } = await serviceSupabase.from('profiles').upsert({
     id: data.user.id,
     email,
     name: input.name,
-    phone: input.phone || '',
+    // NULL, never '': an empty string would collide on the phone unique index.
+    phone: input.phone?.trim() || null,
+    phone_verified: false,
     role: input.role,
     is_verified: false,
     is_active: true,
   });
+
+  if (profileError) {
+    console.error('Applicant profile upsert error:', profileError);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Could not create your profile. Please try again or contact support.' },
+        { status: 500 }
+      ),
+    };
+  }
 
   return { ok: true, userId: data.user.id, email };
 }

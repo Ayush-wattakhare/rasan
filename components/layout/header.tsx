@@ -47,7 +47,7 @@ export default function Header({ user }: HeaderProps) {
   const [location, setLocation] = useState('Pimpri');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; price: number; rating: number | null; is_vegetarian: boolean }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; price: number; rating: number | null; is_veg: boolean | null }>>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -437,11 +437,17 @@ export default function Header({ user }: HeaderProps) {
                               className="flex items-center justify-between p-2.5 hover:bg-orange-50/60 rounded-xl transition-all group"
                             >
                               <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${meal.is_vegetarian ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span
+                                  role="img"
+                                  aria-label={meal.is_veg ? 'Vegetarian' : 'Non-vegetarian'}
+                                  className={`w-2 h-2 rounded-full ${meal.is_veg ? 'bg-green-500' : 'bg-red-500'}`}
+                                />
                                 <span className="font-bold text-sm text-gray-900 group-hover:text-orange-600 transition-colors">{meal.name}</span>
                               </div>
                               <div className="flex items-center gap-3">
-                                {meal.rating && <span className="text-xs text-amber-500 font-bold">★ {meal.rating.toFixed(1)}</span>}
+                                {Number(meal.rating) > 0 && (
+                                  <span className="text-xs text-amber-500 font-bold">★ {Number(meal.rating).toFixed(1)}</span>
+                                )}
                                 <span className="text-xs font-black text-gray-900">₹{meal.price}</span>
                               </div>
                             </Link>
@@ -469,10 +475,10 @@ export default function Header({ user }: HeaderProps) {
                 <button
                   type="button"
                   onClick={() => setIsLocationModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50/80 border border-orange-100 hover:bg-orange-100 rounded-xl text-orange-900 text-xs font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50/80 border border-orange-100 hover:bg-orange-100 active:scale-95 rounded-xl text-orange-950 text-xs font-bold transition-all shadow-xs"
                 >
                   <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
-                  <span className="max-w-[80px] truncate text-[0.7rem]">{location}</span>
+                  <span className="max-w-[120px] truncate text-xs font-bold">{location}</span>
                   <ChevronDown className="w-3 h-3 text-orange-500 shrink-0" />
                 </button>
               </div>
@@ -533,7 +539,7 @@ export default function Header({ user }: HeaderProps) {
                   <Button variant="ghost" size="sm" className="hidden sm:inline-flex text-gray-900 font-bold rounded-xl" asChild>
                     <Link href="/login">Login</Link>
                   </Button>
-                  <Button size="sm" className="bg-[#1A1A1A] hover:bg-orange-600 text-white font-bold px-4 sm:px-6 rounded-xl shadow-lg transition-all" asChild>
+                  <Button size="sm" className="hidden sm:inline-flex bg-[#1A1A1A] hover:bg-orange-600 text-white font-bold px-4 sm:px-6 rounded-xl shadow-lg transition-all" asChild>
                     <Link href="/register">Join Now</Link>
                   </Button>
                 </div>

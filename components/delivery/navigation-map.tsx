@@ -72,7 +72,9 @@ export default function NavigationMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [pickupLocation, deliveryLocation]);
+    // Depend on the numbers, not object identity, so the map isn't rebuilt every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupLocation.lat, pickupLocation.lng, deliveryLocation.lat, deliveryLocation.lng]);
 
   // Update current location marker
   useEffect(() => {
@@ -96,7 +98,8 @@ export default function NavigationMap({
     return () => {
       marker.remove();
     };
-  }, [currentLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation?.lat, currentLocation?.lng]);
 
   return (
     <div

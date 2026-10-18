@@ -7,14 +7,17 @@ interface VendorCardProps {
     id: string;
     business_name: string;
     description: string | null;
-    cuisine_types: string[] | null;
+    /** vendors.cuisine (text[]). */
+    cuisine: string[] | null;
     rating: number | null;
-    total_reviews: number | null;
+    total_orders?: number | null;
     is_active: boolean;
   };
 }
 
 export default function VendorCard({ vendor }: VendorCardProps) {
+  const rating = Number(vendor.rating) || 0;
+  const cuisines = Array.isArray(vendor.cuisine) ? vendor.cuisine : [];
   return (
     <Link href={`/vendors/${vendor.id}`} className="group block relative">
       <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-red-600 rounded-[2rem] blur opacity-0 group-hover:opacity-10 transition duration-500"></div>
@@ -50,9 +53,9 @@ export default function VendorCard({ vendor }: VendorCardProps) {
             </h3>
             
             {/* Cuisine Tags - Premium */}
-            {vendor.cuisine_types && vendor.cuisine_types.length > 0 && (
+            {cuisines.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {vendor.cuisine_types.slice(0, 2).map((type, i) => (
+                {cuisines.slice(0, 2).map((type, i) => (
                   <span key={i} className="px-2 py-0.5 rounded-md bg-gray-50 text-[0.6rem] font-bold text-gray-400 uppercase tracking-wider border border-gray-100 italic">
                     {type}
                   </span>
@@ -66,12 +69,16 @@ export default function VendorCard({ vendor }: VendorCardProps) {
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-1 text-orange-600">
-                  <Star className="w-3.5 h-3.5 fill-orange-600" />
-                  <span className="text-sm font-black tracking-tighter">{vendor.rating?.toFixed(1) || '4.8'}</span>
+                  <Star className="w-3.5 h-3.5 fill-orange-600" aria-hidden="true" />
+                  <span className="text-sm font-black tracking-tighter">
+                    {rating > 0 ? rating.toFixed(1) : 'New'}
+                  </span>
                 </div>
-                <span className="text-[0.65rem] font-bold text-gray-300">
-                  ({vendor.total_reviews || 124} reviews)
-                </span>
+                {Number(vendor.total_orders) > 0 && (
+                  <span className="text-[0.65rem] font-bold text-gray-400">
+                    ({vendor.total_orders} orders)
+                  </span>
+                )}
               </div>
             </div>
             
@@ -91,9 +98,10 @@ export default function VendorCard({ vendor }: VendorCardProps) {
               <Bike className="w-4 h-4 text-green-600" />
               <span className="text-[0.65rem] font-black text-green-700 uppercase tracking-wider italic">Free Delivery</span>
             </div>
-            <button className="text-[0.65rem] font-black uppercase tracking-widest text-[#1A1A1A] group-hover:text-orange-600 transition-colors flex items-center gap-1 group/btn">
-              View Menu <span className="group-hover/btn:translate-x-1 transition-transform">→</span>
-            </button>
+            {/* A span, not a button: the whole card is already a link. */}
+            <span className="text-[0.65rem] font-black uppercase tracking-widest text-[#1A1A1A] group-hover:text-orange-600 transition-colors flex items-center gap-1 group/btn">
+              View Menu <span aria-hidden="true" className="group-hover/btn:translate-x-1 transition-transform">→</span>
+            </span>
           </div>
         </CardContent>
       </Card>

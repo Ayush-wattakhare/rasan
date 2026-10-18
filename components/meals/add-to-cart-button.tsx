@@ -120,13 +120,14 @@ export function AddToCartButton({
       return;
     }
     if (cartItem) {
-      updateQuantity(meal.id, quantity + 1);
+      // Pass the item's plan type: updateQuantity matches on meal + plan.
+      updateQuantity(meal.id, quantity + 1, cartItem.subscription_type || 'one-time');
     }
   };
 
   const handleDecrease = () => {
     if (cartItem) {
-      updateQuantity(meal.id, quantity - 1);
+      updateQuantity(meal.id, quantity - 1, cartItem.subscription_type || 'one-time');
     }
   };
 

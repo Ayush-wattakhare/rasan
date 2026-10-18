@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import type { CartItem as CartItemType, SubscriptionType } from '@/types';
 import { getItemPricing } from '@/lib/contexts/cart-context';
 import { formatCurrency, getTimeOfDayInfo } from '@/lib/utils/format';
+import { MAX_PLAN_START_DAYS_AHEAD, defaultPlanStart, isValidPlanStart } from '@/lib/pricing/plan-schedule';
+import { addDaysISO, istToday } from '@/lib/utils/ist-date';
 
 interface CartItemProps {
   item: CartItemType;
@@ -494,12 +496,41 @@ export function CartItem({
               })}
             </div>
 
-            <p className="text-xs text-gray-500 flex items-center gap-1">
+            {/* Plan start date: price follows the meals that actually fall in the plan. */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <label
+                htmlFor={`plan-start-${item.meal_id}`}
+                className="text-xs font-bold text-gray-800 uppercase tracking-wider"
+              >
+                Starts on
+              </label>
+              <input
+                id={`plan-start-${item.meal_id}`}
+                type="date"
+                value={pricing.planStartDate || defaultPlanStart()}
+                min={defaultPlanStart()}
+                max={addDaysISO(istToday(), MAX_PLAN_START_DAYS_AHEAD)}
+                onChange={(e) => {
+                  if (isValidPlanStart(e.target.value)) {
+                    onUpdateOptions({ plan_start_date: e.target.value });
+                  }
+                }}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+              />
+              <span className="text-[0.68rem] text-gray-500">
+                {subType === 'monthly' ? '30-day plan' : '7-day plan'}
+              </span>
+            </div>
+
+            <p className="text-xs text-gray-500 flex flex-wrap items-center gap-1" aria-live="polite">
               <span>💡 Total meals:</span>
               <strong className="text-gray-800 font-bold">
-                {pricing.multiplier} meal{pricing.multiplier > 1 ? 's' : ''}
+                {pricing.mealCount} meal{pricing.mealCount === 1 ? '' : 's'}
               </strong>
-              <span>({deliveryDays.length} days/week × {subType === 'monthly' ? '4 weeks' : '1 week'})</span>
+              <span>
+                ({deliveryDays.length} day{deliveryDays.length === 1 ? '' : 's'}/week in the{' '}
+                {subType === 'monthly' ? '30' : '7'} days from your start date)
+              </span>
               {pricing.savings > 0 && (
                 <span className="text-green-600 font-bold ml-1">
                   • {pricing.discountPct}% Plan Discount Applied

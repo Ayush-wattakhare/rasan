@@ -82,7 +82,11 @@ async function handleUpdate(request: NextRequest, params: Promise<{ id: string }
     }
   } else {
     if (is_active !== undefined) {
-      await serviceClient.from('vendors').update({ is_active }).eq('user_id', id);
+      // An admin activating a kitchen also approves it (migration 006 is_approved).
+      await serviceClient
+        .from('vendors')
+        .update(is_active ? { is_active: true, is_approved: true } : { is_active: false })
+        .eq('user_id', id);
     }
     if (is_verified !== undefined) {
       await serviceClient.from('delivery_partners').update({ is_verified }).eq('user_id', id);

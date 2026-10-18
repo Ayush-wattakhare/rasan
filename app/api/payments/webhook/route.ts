@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       const { data: order } = await serviceClient
         .from('orders')
         .select(
-          'id, order_number, total, payment_status, customer_id, delivery_address, profiles(phone, name)'
+          'id, order_number, total, status, payment_status, customer_id, delivery_address, profiles(phone, name)'
         )
         .eq('payment_order_id', gatewayOrderId)
         .maybeSingle();
@@ -77,6 +77,39 @@ export async function POST(request: NextRequest) {
       const result = await markOrderPaid(order.id, paymentId);
       if (!result.ok) {
         return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
+      }
+
+      if (!result.changed) {
+        // Money was captured but the order can't be confirmed (e.g. cancelled
+        // meanwhile). Never tell the customer it's confirmed; flag it for a refund.
+        if (result.cancelled) {
+          console.error(
+            `CAPTURED_ON_CANCELLED: order ${order.id} payment ${paymentId}; queued for refund review`
+          );
+          const { error: flagError } = await (serviceClient.from('refunds_ledger' as any) as any).upsert(
+            {
+              // Deterministic id so webhook retries don't create duplicates.
+              reference_id: `AUTO-${paymentId}`,
+              order_id: order.id,
+              order_number: order.order_number,
+              recipient_id: order.customer_id,
+              recipient_role: 'customer',
+              recipient_name: (order.profiles as any)?.name || 'Customer',
+              amount: Number(order.total),
+              type: 'customer_refund',
+              reason: 'Payment captured on a cancelled order (needs refund review)',
+              status: 'pending',
+              gateway: 'razorpay',
+            },
+            { onConflict: 'reference_id', ignoreDuplicates: true }
+          );
+          if (flagError) console.error('Failed to queue refund review:', flagError);
+        }
+        return NextResponse.json({
+          success: true,
+          changed: false,
+          message: result.cancelled ? 'Order cancelled; refund review queued' : 'No change',
+        });
       }
 
       // Dispatch customer transactional notification
