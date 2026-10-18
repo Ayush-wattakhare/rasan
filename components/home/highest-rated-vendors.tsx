@@ -1,27 +1,15 @@
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
 import { Star, ChefHat, Award, ArrowRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDistance, type NearbyKitchen } from '@/lib/location/nearby';
 
-export default async function HighestRatedVendors() {
-  const supabase = await createClient();
+/** Top 4 by rating among kitchens that deliver to the customer (from getServiceArea). */
+export default function HighestRatedVendors({ kitchens }: { kitchens: NearbyKitchen[] }) {
+  const topVendors = [...kitchens]
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.distance_km - b.distance_km)
+    .slice(0, 4);
 
-  const { data: topVendors } = await supabase
-    .from('vendors')
-    .select(`
-      id,
-      business_name,
-      cuisine,
-      rating,
-      total_orders,
-      address,
-      description
-    `)
-    .eq('is_active', true)
-    .order('rating', { ascending: false })
-    .limit(4);
-
-  if (!topVendors || topVendors.length === 0) return null;
+  if (topVendors.length === 0) return null;
 
   return (
     <section className="space-y-8 pt-8 border-t border-gray-100">
@@ -58,7 +46,7 @@ export default async function HighestRatedVendors() {
                   <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
                     <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                     <span className="text-xs font-black text-amber-700">
-                      {vendor.rating ? vendor.rating.toFixed(1) : '5.0'}
+                      {vendor.rating ? vendor.rating.toFixed(1) : 'New'}
                     </span>
                   </div>
                 </div>
@@ -85,7 +73,7 @@ export default async function HighestRatedVendors() {
               </CardContent>
 
               <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500">
-                <span>{vendor.total_orders || 0}+ Completed Orders</span>
+                <span>{formatDistance(vendor.distance_km)}</span>
                 <span className="text-orange-600 font-black group-hover:translate-x-1 transition-transform">Menu →</span>
               </div>
             </Card>

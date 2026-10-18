@@ -11,6 +11,8 @@ import {
   type SchedulablePlan,
 } from '@/lib/pricing/plan-schedule';
 import { istToday } from '@/lib/utils/ist-date';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { getServiceArea } from '@/lib/location/nearby';
 
 // order_id is filled when a delivery is turned into an order.
 const toDeliveries = (dates: string[]) =>
@@ -130,14 +132,15 @@ export default async function SubscriptionsPage() {
     }
   }
 
-  // Fetch available verified proper vendors for creating subscriptions
-  const { data: vendors } = await supabase
-    .from('vendors')
-    .select('id, business_name, cuisine, rating')
-    .eq('is_active', true)
-    .not('business_name', 'ilike', '%test%')
-    .order('rating', { ascending: false })
-    .limit(20);
+  // Only kitchens that deliver to the customer's saved location can be subscribed to.
+  const area = await getServiceArea(supabase, await getDeliveryLocation());
+  const vendors =
+    area.status === 'available'
+      ? [...area.kitchens]
+          .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.distance_km - b.distance_km)
+          .slice(0, 20)
+          .map((k) => ({ id: k.id, business_name: k.business_name, cuisine: k.cuisine, rating: k.rating }))
+      : [];
 
   // Fetch plan pricing
   const { data: planPricing } = await supabase

@@ -276,18 +276,24 @@ export default function CreateSubscriptionDialog({
                             {vendor.business_name}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {vendor.cuisine || 'North & South Indian Homely Food'}
+                            {(Array.isArray(vendor.cuisine) ? vendor.cuisine.join(', ') : vendor.cuisine) ||
+                              'Home-style Indian food'}
                           </p>
                         </div>
                       </div>
                       <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-100">
-                        {vendor.rating?.toFixed(1) || '4.8'} ★
+                        {vendor.rating ? `${Number(vendor.rating).toFixed(1)} ★` : 'New'}
                       </span>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {vendors.length === 0 && (
+              <p role="status" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                No home kitchen delivers to your saved location yet. Change your delivery location from the header to see kitchens near you.
+              </p>
+            )}
           </div>
 
           {/* Section 2: Meal Preference & Plan Duration */}

@@ -13,6 +13,10 @@ import {
   planEndDate,
 } from '@/lib/pricing/plan-schedule';
 import { sanitizeDeliveryAddress } from '@/lib/utils/address';
+import { coordsFromAddress } from '@/lib/utils/geo';
+import { deliveryRange } from '@/lib/location/delivery-range';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
 import { NextResponse } from 'next/server';
 
 function buildDeliveries(dates: string[]) {
@@ -143,11 +147,26 @@ export async function POST(request: Request) {
 
     const { data: vendor } = await serviceClient
       .from('vendors')
-      .select('id, is_active')
+      .select('id, is_active, location')
       .eq('id', vendorId)
       .maybeSingle();
     if (!vendor?.is_active) {
       return NextResponse.json({ error: 'This kitchen is not accepting subscriptions' }, { status: 409 });
+    }
+
+    // Same 10 km rule as checkout. Plans from an order were checked when it was placed.
+    if (!order_id) {
+      const customer = coordsFromAddress(address) || (await getDeliveryLocation());
+      const range = deliveryRange(customer, vendor.location);
+      if (range.status === 'out-of-range') {
+        return NextResponse.json(
+          {
+            error: `This kitchen is ${range.distanceKm.toFixed(1)} km away and only delivers within ${MAX_DELIVERY_RADIUS_KM} km.`,
+            code: 'DELIVERY_TOO_FAR',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const { data: subscription, error } = await serviceClient
