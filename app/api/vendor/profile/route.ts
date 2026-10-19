@@ -1,21 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-
-/**
- * Helper to parse PostGIS location into { lat, lng }
- * Handles both WKT 'POINT(lng lat)' and GeoJSON objects.
- */
-function parseLocation(loc: any): { lat: number; lng: number } | null {
-  if (!loc) return null;
-  if (typeof loc === 'object' && Array.isArray(loc.coordinates)) {
-    return { lng: Number(loc.coordinates[0]), lat: Number(loc.coordinates[1]) };
-  }
-  const match = String(loc).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/i);
-  if (match) {
-    return { lng: parseFloat(match[1]), lat: parseFloat(match[2]) };
-  }
-  return null;
-}
+import { parseVendorLocation as parseLocation } from '@/lib/utils/geo';
 
 export async function GET() {
   try {
@@ -91,7 +76,7 @@ export async function PUT(request: Request) {
     // Ensure this vendor record belongs to authenticated user
     const { data: existingVendor } = await serviceClient
       .from('vendors')
-      .select('id, user_id, is_active')
+      .select('id, user_id, is_active, is_approved')
       .eq('user_id', user.id)
       .eq('id', id)
       .maybeSingle();
@@ -116,7 +101,16 @@ export async function PUT(request: Request) {
     if (email !== undefined) updateData.email = String(email).trim();
     if (operating_hours !== undefined) updateData.operating_hours = operating_hours;
     if (bank_details !== undefined) updateData.bank_details = bank_details;
-    if (is_active !== undefined) updateData.is_active = Boolean(is_active);
+    if (is_active !== undefined) {
+      // Only admin-approved kitchens may open themselves (closing is always allowed).
+      if (Boolean(is_active) && !existingVendor.is_approved) {
+        return NextResponse.json(
+          { error: 'Your kitchen is awaiting admin approval and cannot go live yet.' },
+          { status: 403 }
+        );
+      }
+      updateData.is_active = Boolean(is_active);
+    }
 
     // If valid GPS coordinates are supplied, update PostGIS geography point
     if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {

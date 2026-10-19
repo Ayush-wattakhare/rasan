@@ -4,6 +4,8 @@ import { X, MapPin, Home, Phone, Navigation, Package, DollarSign, Clock, ShieldC
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import dynamic from 'next/dynamic';
+import { coordsFromAddress, parseVendorLocation } from '@/lib/utils/geo';
+import { haversineDistanceKm } from '@/lib/utils/constants';
 
 const NavigationMap = dynamic(() => import('@/components/delivery/navigation-map'), {
   ssr: false,
@@ -31,21 +33,24 @@ export function OrderLocationPreviewModal({
 }: OrderLocationPreviewModalProps) {
   if (!isOpen || !order) return null;
 
-  const vendorName = order.vendors?.business_name || "Anita's Home Kitchen";
-  const vendorAddress = order.vendors?.address || 'Pimpri Colony, Pimpri-Chinchwad, Pune';
-  const vendorPhone = order.vendors?.phone || '+91 98765 43210';
+  const vendorName = order.vendors?.business_name || 'Kitchen';
+  const vendorAddress = order.vendors?.address || 'Kitchen address not provided';
+  const vendorPhone: string | null = order.vendors?.phone || null;
   const customerName = order.profiles?.name || 'Customer';
-  const customerPhone = order.profiles?.phone || '+91 98220 12345';
-  const customerAddress = order.delivery_address?.street || 'Rahatani, Pimpri-Chinchwad';
-  const customerCity = order.delivery_address?.city || 'Pune';
-  const orderNum = order.order_number || (order.id ? order.id.slice(0, 8) : 'ORD-01');
+  // Customer contact is only shared after the rider accepts the order.
+  const customerPhone: string | null = order.profiles?.phone || null;
+  const customerAddress = order.delivery_address?.street || 'Address shared after acceptance';
+  const customerCity = order.delivery_address?.city || '';
+  const orderNum = order.order_number || (order.id ? order.id.slice(0, 8) : '');
   const items = Array.isArray(order.items) ? order.items : [];
   const itemCount = items.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
 
-  const pickupLat = order.vendors?.location?.coordinates?.[1] || 18.6279;
-  const pickupLng = order.vendors?.location?.coordinates?.[0] || 73.8009;
-  const dropLat = order.delivery_address?.coordinates?.lat || order.delivery_address?.lat || 18.6011;
-  const dropLng = order.delivery_address?.coordinates?.lng || order.delivery_address?.lng || 73.7915;
+  // vendors.location is GEOGRAPHY (hex EWKB from Supabase); parse it properly.
+  const pickup = parseVendorLocation(order.vendors?.location);
+  const drop = coordsFromAddress(order.delivery_address);
+  const routeKm = pickup && drop ? haversineDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng) : null;
+  // Straight-line distance × 1.3 road factor, ~20 km/h city riding.
+  const routeMins = routeKm !== null ? Math.max(3, Math.round(((routeKm * 1.3) / 20) * 60)) : null;
 
   return (
     <div
@@ -87,13 +92,20 @@ export function OrderLocationPreviewModal({
 
         {/* Tactical Map Visual */}
         <div className="bg-gray-900 rounded-[2rem] overflow-hidden h-[210px] relative mb-6 border-2 border-gray-100 shadow-inner">
-          <NavigationMap
-            pickupLocation={{ lat: pickupLat, lng: pickupLng }}
-            deliveryLocation={{ lat: dropLat, lng: dropLng }}
-          />
-          <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-[0.55rem] font-black text-white uppercase tracking-widest">
-            Estimated Route: ~3.2 km (12 mins)
-          </div>
+          {pickup && drop ? (
+            <NavigationMap pickupLocation={pickup} deliveryLocation={drop} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-center px-6">
+              <p className="text-[0.65rem] font-black text-gray-400 uppercase tracking-widest">
+                Map unavailable: {pickup ? 'customer' : 'kitchen'} location not pinned
+              </p>
+            </div>
+          )}
+          {routeKm !== null && (
+            <div className="absolute top-3 left-3 z-[500] bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-[0.55rem] font-black text-white uppercase tracking-widest">
+              Approx. {(routeKm * 1.3).toFixed(1)} km (~{routeMins} mins)
+            </div>
+          )}
         </div>
 
         {/* Pickup & Delivery Location Cards */}
@@ -104,12 +116,14 @@ export function OrderLocationPreviewModal({
               <span className="text-[0.6rem] font-black uppercase tracking-widest text-blue-700 flex items-center gap-1.5">
                 <Home className="w-3.5 h-3.5" /> 1. Pickup From Kitchen
               </span>
-              <a
-                href={`tel:${vendorPhone}`}
-                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl shadow-xs"
-              >
-                <Phone className="w-3 h-3" /> Call Kitchen
-              </a>
+              {vendorPhone && (
+                <a
+                  href={`tel:${vendorPhone}`}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl shadow-xs"
+                >
+                  <Phone className="w-3 h-3" /> Call Kitchen
+                </a>
+              )}
             </div>
             <div>
               <h4 className="font-black text-gray-900 text-sm">{vendorName}</h4>
@@ -123,17 +137,19 @@ export function OrderLocationPreviewModal({
               <span className="text-[0.6rem] font-black uppercase tracking-widest text-emerald-700 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> 2. Deliver To Customer
               </span>
-              <a
-                href={`tel:${customerPhone}`}
-                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl shadow-xs"
-              >
-                <Phone className="w-3 h-3" /> Call Customer
-              </a>
+              {customerPhone && (
+                <a
+                  href={`tel:${customerPhone}`}
+                  className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl shadow-xs"
+                >
+                  <Phone className="w-3 h-3" /> Call Customer
+                </a>
+              )}
             </div>
             <div>
               <h4 className="font-black text-gray-900 text-sm">{customerName}</h4>
               <p className="text-xs text-gray-600 font-medium mt-0.5">
-                {customerAddress}, {customerCity}
+                {[customerAddress, customerCity].filter(Boolean).join(', ')}
               </p>
             </div>
           </div>

@@ -4,9 +4,9 @@ interface VendorHeaderProps {
   vendor: {
     business_name: string;
     description: string | null;
-    cuisine_types: string[] | null;
+    cuisine: string[] | null;
     rating: number | null;
-    total_reviews: number | null;
+    total_orders?: number | null;
     address: string;
   };
 }
@@ -45,7 +45,7 @@ export default function VendorHeader({ vendor }: VendorHeaderProps) {
           </div>
 
           <div className="flex flex-wrap justify-center md:justify-start gap-3">
-            {vendor.cuisine_types?.map((cuisine) => (
+            {(Array.isArray(vendor.cuisine) ? vendor.cuisine : []).map((cuisine) => (
               <span key={cuisine} className="px-4 py-1.5 rounded-xl bg-white/5 border border-white/10 text-white/60 text-[0.65rem] font-bold uppercase tracking-widest hover:bg-white/10 transition-colors">
                 {cuisine}
               </span>
@@ -56,15 +56,27 @@ export default function VendorHeader({ vendor }: VendorHeaderProps) {
             <div className="flex flex-col">
                <span className="text-[0.6rem] font-black uppercase tracking-widest text-gray-500">Global Rating</span>
                <div className="flex items-center gap-2">
-                 <span className="text-2xl font-black text-white tracking-tighter">{(vendor.rating || 4.8).toFixed(1)}</span>
-                 <div className="flex gap-0.5">
-                   {[1,2,3,4,5].map(i => (
-                     <span key={i} className="text-orange-500 text-xs">★</span>
-                   ))}
-                 </div>
-                 <span className="text-[0.6rem] font-bold text-gray-500 uppercase tracking-widest ml-1">
-                   ({vendor.total_reviews || 100} reviews)
+                 <span className="text-2xl font-black text-white tracking-tighter">
+                   {Number(vendor.rating) > 0 ? Number(vendor.rating).toFixed(1) : 'New'}
                  </span>
+                 {Number(vendor.rating) > 0 && (
+                   <div className="flex gap-0.5" aria-label={`${Number(vendor.rating).toFixed(1)} out of 5`}>
+                     {[1, 2, 3, 4, 5].map((i) => (
+                       <span
+                         key={i}
+                         aria-hidden="true"
+                         className={`text-xs ${i <= Math.round(Number(vendor.rating)) ? 'text-orange-500' : 'text-white/20'}`}
+                       >
+                         ★
+                       </span>
+                     ))}
+                   </div>
+                 )}
+                 {Number(vendor.total_orders) > 0 && (
+                   <span className="text-[0.6rem] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                     ({vendor.total_orders} orders)
+                   </span>
+                 )}
                </div>
             </div>
 

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { checkDiscount, validateMealInput } from '@/lib/validation/meal';
+import { sanitizeSearch } from '@/lib/utils/search';
+import { isUuid } from '@/lib/utils/validation-ids';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { getServiceArea } from '@/lib/location/nearby';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,10 +39,8 @@ export async function GET(request: NextRequest) {
       const { data: meals, error } = await mealsQuery;
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        );
+        console.error('Vendor meals error:', error);
+        return NextResponse.json({ error: 'Failed to load meals' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -45,8 +48,19 @@ export async function GET(request: NextRequest) {
         meals: meals || [],
       });
     } else {
-      // Get all meals (for customer dashboard) - only proper active vendors
-      const { data: meals, error } = await serviceSupabase
+      // Public listing (customer dashboard, header search): active kitchens only.
+      // Paginated; the old '%test%' name filter hid real kitchens and is removed.
+      const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '24', 10) || 24, 1), 100);
+      const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0);
+      const search = sanitizeSearch(searchParams.get('search'));
+
+      // Only kitchens that deliver to the customer's saved location (cookie).
+      const area = await getServiceArea(serviceSupabase, await getDeliveryLocation());
+      if (area.status !== 'available') {
+        return NextResponse.json({ success: true, meals: [], serviceStatus: area.status });
+      }
+
+      let listQuery = serviceSupabase
         .from('meals')
         .select(`
           *,
@@ -59,14 +73,19 @@ export async function GET(request: NextRequest) {
         `)
         .eq('is_available', true)
         .eq('vendors.is_active', true)
-        .not('vendors.business_name', 'ilike', '%test%')
-        .order('created_at', { ascending: false });
+        .in('vendor_id', area.kitchens.map((k) => k.id))
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (search) {
+        listQuery = listQuery.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      }
+
+      const { data: meals, error } = await listQuery;
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        );
+        console.error('Meals list error:', error);
+        return NextResponse.json({ error: 'Failed to load meals' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -85,33 +104,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const {
-      vendor_id,
-      name,
-      description,
-      category,
-      meal_type,
-      price,
-      preparation_time,
-      is_veg,
-      is_available,
-      ingredients,
-      allergens,
-      image_url,
-      stock,
-    } = body;
-
-    // Validate required fields
-    if (!vendor_id || !name || !category || !meal_type || !price || !preparation_time) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    const body = await request.json().catch(() => ({}));
+    const vendor_id = body?.vendor_id;
+    if (!isUuid(vendor_id)) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    if (!(Number(price) > 0) || !(Number(preparation_time) > 0)) {
-      return NextResponse.json({ error: 'Price and preparation time must be positive' }, { status: 400 });
+    const validated = validateMealInput(body, false);
+    if ('error' in validated) {
+      return NextResponse.json({ error: validated.error }, { status: 400 });
+    }
+    const v = validated.values;
+    const discountError = checkDiscount(v.price, v.discount_price);
+    if (discountError) {
+      return NextResponse.json({ error: discountError }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -147,21 +153,22 @@ export async function POST(request: NextRequest) {
       .from('meals')
       .insert({
         vendor_id,
-        name,
-        description: description || null,
-        category,
-        meal_type,
-        price: parseFloat(price),
-        preparation_time: parseInt(preparation_time),
-        is_veg: is_veg || false,
-        is_available: is_available !== false,
-        ingredients: ingredients || [],
-        allergens: allergens || [],
+        name: v.name as string,
+        description: (v.description as string | null) ?? null,
+        category: v.category as string,
+        meal_type: v.meal_type as any,
+        price: v.price as number,
+        discount_price: (v.discount_price as number | null) ?? null,
+        preparation_time: v.preparation_time as number,
+        is_veg: v.is_veg === true,
+        is_available: v.is_available !== false,
+        ingredients: (v.ingredients as string[]) ?? [],
+        allergens: (v.allergens as string[]) ?? [],
         // Ratings come from customer reviews only.
         rating: 0,
-        image_url: image_url || null,
-        stock: stock != null ? parseInt(stock) : null,
-      })
+        image_url: (v.image_url as string | null) ?? null,
+        stock: (v.stock as number | null) ?? null,
+      } as any)
       .select()
       .single();
 

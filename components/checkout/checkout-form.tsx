@@ -30,7 +30,28 @@ import { paymentService } from '@/lib/services/payment-service';
 import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
 import { getTimeOfDayInfo } from '@/lib/utils/format';
 import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
+import { getItemPricing } from '@/lib/pricing/order-pricing';
 import type { Address, PaymentMethod } from '@/types';
+import type { AccurateLocationResult } from '@/lib/hooks/use-location';
+
+/**
+ * Builds a checkout address from the map-confirmed location using only what
+ * reverse geocoding actually returned. Missing fields stay empty so the
+ * customer is asked to complete them instead of shipping to a guessed address.
+ */
+function addressFromStoredLocation(stored: AccurateLocationResult | null): Address | null {
+  if (!stored || !Number.isFinite(stored.lat) || !Number.isFinite(stored.lng)) return null;
+  const d = stored.details || {};
+  const street = d.street || d.full_address || d.locality || '';
+  if (!street) return null;
+  return {
+    street,
+    city: d.city || '',
+    state: d.state || '',
+    zip_code: d.zip_code || '',
+    coordinates: { lat: stored.lat, lng: stored.lng },
+  };
+}
 
 interface CheckoutFormProps {
   userId: string;
@@ -54,16 +75,7 @@ export function CheckoutForm({
       return savedAddresses[0];
     }
     if (typeof window !== 'undefined') {
-      const stored = getStoredDeliveryLocation();
-      if (stored) {
-        return {
-          street: stored.details.street || stored.details.full_address || `${stored.details.locality || 'Pimpri'} Main Road`,
-          city: stored.details.city || 'Pimpri-Chinchwad',
-          state: stored.details.state || 'Maharashtra',
-          zip_code: stored.details.zip_code || '411017',
-          coordinates: { lat: stored.lat, lng: stored.lng },
-        };
-      }
+      return addressFromStoredLocation(getStoredDeliveryLocation());
     }
     return null;
   });
@@ -86,16 +98,8 @@ export function CheckoutForm({
   // If address was not found in state on initial mount, check stored location once client loads
   useEffect(() => {
     if (!selectedAddress) {
-      const stored = getStoredDeliveryLocation();
-      if (stored) {
-        setSelectedAddress({
-          street: stored.details.street || stored.details.full_address || `${stored.details.locality || 'Pimpri'} Main Road`,
-          city: stored.details.city || 'Pimpri-Chinchwad',
-          state: stored.details.state || 'Maharashtra',
-          zip_code: stored.details.zip_code || '411017',
-          coordinates: { lat: stored.lat, lng: stored.lng },
-        });
-      }
+      const fromStored = addressFromStoredLocation(getStoredDeliveryLocation());
+      if (fromStored) setSelectedAddress(fromStored);
     }
   }, [selectedAddress]);
 
@@ -360,6 +364,10 @@ export function CheckoutForm({
           subscription_type: item.subscription_type,
           delivery_days: item.delivery_days,
           delivery_time: item.delivery_time,
+          // Same start date the cart priced with, so the server charges the same meal count.
+          ...(item.subscription_type !== 'one-time'
+            ? { plan_start_date: getItemPricing(item).planStartDate ?? undefined }
+            : {}),
         })),
         payment_method: paymentMethod,
         delivery_address: selectedAddress,

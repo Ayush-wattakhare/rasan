@@ -7,13 +7,15 @@ interface VendorMenuProps {
     description: string;
     price: number;
     image_url: string | null;
-    is_vegetarian: boolean;
+    is_veg: boolean | null;
     rating: number | null;
     stock: number | null;
   }>;
+  /** False when this kitchen doesn't deliver to the customer. */
+  orderable?: boolean;
 }
 
-export default function VendorMenu({ meals }: VendorMenuProps) {
+export default function VendorMenu({ meals, orderable = true }: VendorMenuProps) {
   if (meals.length === 0) {
     return (
       <div className="py-12 text-center">
@@ -43,7 +45,7 @@ export default function VendorMenu({ meals }: VendorMenuProps) {
       <div className="grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
         {meals.map((meal) => (
           <div key={meal.id} className="scale-95 hover:scale-100 transition-transform duration-500">
-            <MealCard meal={meal} />
+            <MealCard meal={meal} orderable={orderable} />
           </div>
         ))}
       </div>

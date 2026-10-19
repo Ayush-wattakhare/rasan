@@ -1,5 +1,6 @@
 #!/bin/bash
-# Applies migrations 001 → 003 to a throwaway local Postgres database and checks the
+# Applies migrations 001 → 006 to a throwaway local Postgres database (15+, for
+# security_invoker views) and checks the
 # permission model (grants, RLS, guard triggers, payouts, notification triggers) by
 # acting as anon / customer / vendor / rider / admin / service role.
 #
@@ -23,10 +24,13 @@ sed -e 's/CREATE EXTENSION IF NOT EXISTS "postgis";/-- postgis stubbed/' \
 
 dropdb --if-exists "$DB" && createdb "$DB" || exit 1
 for f in supabase-stub.sql "$TMP/001.sql" "$MIG/002_fix_order_rls.sql" "$MIG/002_notifications_triggers.sql" \
-         "$TMP/seed.sql" "$MIG/003_security_hardening.sql" "$MIG/003_security_hardening.sql"; do
+         "$TMP/seed.sql" "$MIG/003_security_hardening.sql" "$MIG/003_security_hardening.sql" \
+         "$MIG/004_phone_auth.sql" "$MIG/005_support_refunds_broadcasts.sql" \
+         "$MIG/006_hardening_v2.sql" "$MIG/006_hardening_v2.sql" \
+         "$MIG/007_nearby_listings.sql" "$MIG/007_nearby_listings.sql"; do
   psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$f" > /dev/null 2> "$TMP/err" || { echo "Failed applying $f"; cat "$TMP/err"; exit 1; }
 done
-echo "Migrations applied (003 applied twice to check it is re-runnable)."
+echo "Migrations applied (003 and 006 applied twice to check they are re-runnable)."
 echo
 
 PASS=0; FAIL=0
@@ -67,6 +71,11 @@ echo "--- profiles"
 t "customer cannot make self admin"          authenticated $C err     "update profiles set role='admin' where id='$C';"
 t "customer cannot un-suspend self"          authenticated $C err     "update profiles set is_active=true where id='$C';"
 t "customer can edit own name"               authenticated $C rows=1  "update profiles set name='New' where id='$C';"
+t "customer cannot change phone directly"    authenticated $C err     "update profiles set phone='+919999999999' where id='$C';"
+t "customer cannot set phone_verified"       authenticated $C err     "update profiles set phone_verified=true where id='$C';"
+t "email is optional (phone sign-ups)"       postgres - rows=1        "select count(*) from information_schema.columns where table_name='profiles' and column_name='email' and is_nullable='YES';"
+t "unverified phones may repeat"             postgres - rows=1        "update profiles set phone='+910000000001', phone_verified=false where id in ('$C','$C2'); select count(*) from (select 1) x;"
+t "verified phones are unique"               postgres - err           "update profiles set phone='+910000000002', phone_verified=true where id in ('$C','$C2');"
 t "customer cannot read other profiles"      authenticated $C rows=0  "select count(*) from profiles where id='$C2';"
 t "customer reads own profile"               authenticated $C rows=1  "select count(*) from profiles where id='$C';"
 t "anon cannot read profiles"                anon - rows=0            "select count(*) from profiles;"
@@ -80,10 +89,15 @@ t "user select * on vendors blocked"         authenticated $C err     "select * 
 t "owner sees own inactive vendor"           authenticated $V rows=1  "select count(*) from (select id from vendors where user_id='$V') x;"
 t "vendor cannot set own rating"             authenticated $V err     "update vendors set rating=5 where user_id='$V';"
 t "vendor edits storefront"                  authenticated $V rows=1  "update vendors set business_name='X', bank_details='{}' where user_id='$V';"
-t "unverified vendor cannot go live"         authenticated $V err     "update vendors set is_active=true where user_id='$V';"
-t "verified vendor can go live"              authenticated $V rows=1  "reset role; update profiles set is_verified=true where id='$V'; set local role authenticated; update vendors set is_active=true where user_id='$V';"
+t "unapproved vendor cannot go live"         authenticated $V err     "reset role; update vendors set is_approved=false, is_active=false where user_id='$V'; set local role authenticated; update vendors set is_active=true where user_id='$V';"
+t "profile is_verified alone is not enough"  authenticated $V err     "reset role; update vendors set is_approved=false, is_active=false where user_id='$V'; update profiles set is_verified=true where id='$V'; set local role authenticated; update vendors set is_active=true where user_id='$V';"
+t "approved vendor can go live"              authenticated $V rows=1  "reset role; update vendors set is_approved=true, is_active=false where user_id='$V'; set local role authenticated; update vendors set is_active=true where user_id='$V';"
+t "vendor cannot self-approve"               authenticated $V err     "update vendors set is_approved=true where user_id='$V';"
+t "live vendor backfilled as approved"       postgres - rows=1        "select count(*) from vendors where user_id='66666666-6666-6666-6666-666666666666' and is_approved;"
 t "user cannot insert active vendor"         authenticated $C err     "insert into vendors(user_id,business_name,location,address,phone,email,operating_hours,is_active) values ('$C','B','POINT(1 1)','a','1','e','{}',true);"
-t "user can insert pending vendor"           authenticated $C rows=1  "insert into vendors(user_id,business_name,location,address,phone,email,operating_hours) values ('$C','B','POINT(1 1)','a','1','e','{}');"
+t "user cannot insert vendor rows directly"  authenticated $C err     "insert into vendors(user_id,business_name,location,address,phone,email,operating_hours) values ('$C','B','POINT(1 1)','a','1','e','{}');"
+t "user cannot write meals directly"         authenticated $V err     "update meals set rating=5 where id='$MEAL';"
+t "meals of inactive kitchens are hidden"    anon - rows=0            "reset role; update vendors set is_active=false where id='$VEN'; set local role anon; select count(*) from meals where vendor_id='$VEN';"
 
 echo "--- delivery partners"
 t "rider cannot edit earnings"               authenticated $R err     "update delivery_partners set earnings='{\"total\":99999}' where user_id='$R';"
@@ -99,8 +113,12 @@ echo "--- orders"
 t "customer cannot insert orders"            authenticated $C err     "insert into orders(customer_id,vendor_id,items,subtotal,delivery_fee,tax,total,payment_method,delivery_address) values ('$C','$VEN','[]',1,0,0,1,'cash','{}');"
 t "customer cannot mark paid"                authenticated $C err     "update orders set payment_status='paid' where id='$O3';"
 t "customer cannot change status"            authenticated $C err     "update orders set status='delivered' where id='$O3';"
-t "customer rates delivered order"           authenticated $C rows=1  "update orders set rating='{\"food\":5,\"delivery\":5}' where id='$O2';"
-t "customer cannot rate undelivered order"   authenticated $C rows=0  "update orders set rating='{\"food\":5,\"delivery\":5}' where id='$O3';"
+t "customer cannot write rating directly"    authenticated $C err     "update orders set rating='{\"food\":5,\"delivery\":5}' where id='$O2';"
+t "invalid rating rejected (even service)"   service_role - err       "update orders set rating='{\"food\":\"x\"}' where id='$O2';"
+t "out-of-range rating rejected"             service_role - err       "update orders set rating='{\"food\":50}' where id='$O2';"
+t "valid rating via service role"            service_role - rows=1    "update orders set rating='{\"food\":4,\"delivery\":5}' where id='$O2';"
+t "rating updates rider average at once"     service_role - rows=1    "update orders set delivery_partner_id='cccccccc-0000-0000-0000-000000000001', rating='{\"food\":4,\"delivery\":3}' where id='$O2'; select count(*) from delivery_partners where id='cccccccc-0000-0000-0000-000000000001' and rating=3;"
+t "new order numbers use the sequence"       service_role - rows=1    "insert into orders(id,customer_id,vendor_id,items,subtotal,delivery_fee,tax,total,payment_method,delivery_address) values ('dddddddd-0000-0000-0000-00000000000a','$C','$VEN','[]',1,0,0,1,'cash','{}'); select count(*) from orders where id='dddddddd-0000-0000-0000-00000000000a' and order_number ~ '^ORD-[0-9]{8}-[0-9]{6}\$';"
 t "vendor cannot change order status"        authenticated $V err     "update orders set status='confirmed' where id='$O3';"
 t "customer reads own orders"                authenticated $C rows=4  "select count(*) from orders;"
 t "vendor reads kitchen orders"              authenticated $V rows=4  "select count(*) from orders;"
@@ -121,15 +139,28 @@ echo "--- subscriptions"
 t "customer cannot insert subscription"      authenticated $C err     "insert into subscriptions(customer_id,vendor_id,plan_type,meal_type,start_date,end_date,delivery_time,address,price) values ('$C','$VEN','weekly','lunch','2026-10-11','2026-10-18','12:00','{}',1);"
 t "customer cannot change price"             authenticated $C err     "update subscriptions set price=1 where id='$S1';"
 t "customer cannot extend end_date"          authenticated $C err     "update subscriptions set end_date='2030-01-01' where id='$S1';"
-t "customer pauses subscription"             authenticated $C rows=1  "update subscriptions set status='paused' where id='$S1';"
+t "customer cannot change status directly"   authenticated $C err     "update subscriptions set status='paused' where id='$S1';"
 t "customer cannot revive cancelled"         authenticated $C err     "update subscriptions set status='active' where id='$S2';"
-t "customer edits deliveries/address"        authenticated $C rows=1  "update subscriptions set deliveries='[]', address='{}', updated_at=now() where id='$S1';"
+t "customer cannot edit deliveries directly" authenticated $C err     "update subscriptions set deliveries='[]', address='{}', updated_at=now() where id='$S1';"
 t "service role extends end_date"            service_role - rows=1    "update subscriptions set end_date='2026-10-19' where id='$S1';"
+t "pending_payment status exists"            service_role - rows=1    "update subscriptions set status='pending_payment' where id='$S1';"
 
 echo "--- reviews"
-t "review own delivered order"               authenticated $C rows=1  "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C','$O2',5);"
+t "no direct review inserts (API only)"      authenticated $C err     "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C','$O2',5);"
 t "no review for undelivered order"          authenticated $C err     "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C','$O3',5);"
 t "no review for someone else's order"       authenticated $C2 err    "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C2','$O2',5);"
+t "review recalculates meal rating"          service_role - rows=1    "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C','$O2',4); select count(*) from meals where id='$MEAL' and rating=4;"
+t "deleting a review recalculates"           service_role - rows=1    "insert into reviews(meal_id,user_id,order_id,rating) values ('$MEAL','$C','$O2',4); delete from reviews where order_id='$O2'; select count(*) from meals where id='$MEAL' and rating=0;"
+
+echo "--- notifications & support tickets"
+t "user cannot rewrite notification text"    authenticated $C err     "update notifications set title='hacked' where user_id='$C';"
+t "user can mark own notifications read"     authenticated $C ok      "update notifications set is_read=true where user_id='$C';"
+t "user cannot insert notifications"         authenticated $C err     "insert into notifications(user_id,type,title,message) values ('$C2','system','x','y');"
+t "ticket privileged fields not writable"    authenticated $C err     "insert into support_tickets(user_id,category,subject,description,status) values ('$C','general','s','d','resolved');"
+t "ticket defaults forced by database"       authenticated $C rows=1  "insert into support_tickets(user_id,category,subject,description) values ('$C','general','s','d'); reset role; select count(*) from support_tickets where user_id='$C' and status='open' and priority='medium' and refund_amount=0;"
+t "ticket for someone else rejected"         authenticated $C err     "insert into support_tickets(user_id,category,subject,description) values ('$C2','general','s','d');"
+t "ticket on another's order rejected"       authenticated $C2 err    "insert into support_tickets(user_id,category,subject,description,order_id) values ('$C2','general','s','d','$O1');"
+t "rider earnings view scoped to own orders" authenticated $C2 rows=0 "select count(*) from delivery_partner_earnings_v;"
 
 echo "--- payouts"
 t "user cannot call request_payout"          authenticated $R err     "select request_payout('$R','delivery',10,'upi','{}',0.07);"

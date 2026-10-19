@@ -91,6 +91,20 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: 'Failed to update order' }, { status: 500 });
     }
+    if (!result.changed) {
+      // Same payment recorded already (e.g. by the webhook): a harmless retry.
+      if (result.alreadyPaidWith === paymentId) {
+        return NextResponse.json({ success: true, message: 'Payment already verified' });
+      }
+      return NextResponse.json(
+        {
+          error: result.cancelled
+            ? 'This order was cancelled. If you were charged, a refund will be reviewed by our team.'
+            : 'This order is no longer awaiting payment.',
+        },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });
   } catch (error) {

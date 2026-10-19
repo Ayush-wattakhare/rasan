@@ -17,7 +17,7 @@ export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
 export type PaymentMethod = 'cash' | 'card' | 'upi' | 'wallet';
 
-export type SubscriptionStatus = 'active' | 'paused' | 'cancelled' | 'completed';
+export type SubscriptionStatus = 'pending_payment' | 'active' | 'paused' | 'cancelled' | 'completed';
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -163,6 +163,8 @@ export interface CartItem {
   delivery_days: string[];
   delivery_time: string;
   discount_percentage?: number;
+  /** First delivery date of a weekly / monthly plan (YYYY-MM-DD, IST). */
+  plan_start_date?: string;
 }
 
 export interface Cart {

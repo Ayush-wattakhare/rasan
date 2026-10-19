@@ -9,6 +9,8 @@ interface CityUnavailableProps {
   cityName?: string;
   /** Optional callback to allow user to preview Pune kitchens */
   onBrowsePreview?: () => void;
+  /** Optional callback to pick a different delivery location */
+  onChangeLocation?: () => void;
 }
 
 /**
@@ -16,7 +18,7 @@ interface CityUnavailableProps {
  * the service radius. Encourages them to sign up for launch notifications
  * and browse the Pune menus in read-only mode.
  */
-export function CityUnavailable({ cityName, onBrowsePreview }: CityUnavailableProps) {
+export function CityUnavailable({ cityName, onBrowsePreview, onChangeLocation }: CityUnavailableProps) {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -53,9 +55,18 @@ export function CityUnavailable({ cityName, onBrowsePreview }: CityUnavailablePr
             yet 🚚
           </h1>
           <p className="text-sm text-gray-500 max-w-sm mx-auto leading-relaxed font-medium">
-            Rasan is currently delivering <strong>hyper-local ghar ka khana</strong> in Pune.
-            We&apos;re expanding fast! Be the first to know when we launch near you.
+            No Rasan home kitchen delivers within 10 km of this location yet. We currently deliver
+            <strong> hyper-local ghar ka khana</strong> in Pune and are expanding fast.
           </p>
+          {onChangeLocation && (
+            <button
+              type="button"
+              onClick={onChangeLocation}
+              className="text-sm font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2"
+            >
+              Wrong location? Change it
+            </button>
+          )}
         </div>
 
         {/* Waitlist form */}
@@ -98,7 +109,7 @@ export function CityUnavailable({ cityName, onBrowsePreview }: CityUnavailablePr
             </button>
           ) : (
             <Link
-              href="/vendors"
+              href="/vendors?preview=pune"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-50 transition-colors"
             >
               🍱 Browse Pune Menus (Read-only)

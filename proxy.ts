@@ -13,6 +13,8 @@ export const config = {
      * - _next/static & _next/image (static files)
      * - favicon.ico & image files
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|ico|css|js)$).*)',
+    // Excludes /api and /api/* only (not pages like /apiary), and static asset
+    // files by extension (anything with these extensions is served from public/).
+    '/((?!api/|api$|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|ico|css|js|map|txt|xml|webmanifest)$).*)',
   ],
 };

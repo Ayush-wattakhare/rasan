@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/hooks/use-auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,33 +26,50 @@ interface MealCardProps {
     description?: string;
     price: number;
     image_url: string | null;
-    is_vegetarian?: boolean;
-    is_veg?: boolean;
+    /** meals.is_veg (the DB column). */
+    is_veg?: boolean | null;
     rating: number | null;
     stock: number | null;
     vendor_id?: string;
+    preparation_time?: number | null;
     vendors?: {
       id?: string;
       business_name: string;
     };
   };
+  /** False when the kitchen doesn't deliver to the customer (preview listings). */
+  orderable?: boolean;
 }
 
-function MealCard({ meal }: MealCardProps) {
+function MealCard({ meal, orderable = true }: MealCardProps) {
   const { addItem, clearAndAddItem } = useCart();
   const { toast } = useToast();
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [isAdded, setIsAdded] = useState(false);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const vendorId = meal.vendor_id || meal.vendors?.id || 'default_vendor';
+  useEffect(() => () => {
+    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
+  }, []);
+
+  const flashAdded = () => {
+    setIsAdded(true);
+    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
+    addedTimerRef.current = setTimeout(() => setIsAdded(false), 1400);
+  };
+
+  // No fake fallback id: without a real kitchen the order API would reject the cart.
+  const vendorId = meal.vendor_id || meal.vendors?.id || null;
   const itemPayload = {
     meal_id: meal.id,
-    vendor_id: vendorId,
+    vendor_id: vendorId ?? '',
     name: meal.name,
     price: meal.price,
     quantity: 1,
     image_url: meal.image_url || undefined,
-    is_veg: meal.is_vegetarian ?? (meal as any).is_veg ?? true,
+    is_veg: meal.is_veg === true,
     subscription_type: 'one-time' as const,
     delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
     delivery_time: '12:30 PM',
@@ -60,16 +79,27 @@ function MealCard({ meal }: MealCardProps) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (meal.stock === 0) return;
+    if (meal.stock === 0 || !vendorId || authLoading) return;
 
-    const result = addItem(itemPayload);
+    // Same rule as AddToCartButton: delivery needs an account.
+    if (!user) {
+      toast({
+        title: 'Login Required',
+        description: 'Please sign in or register to add meals to your cart.',
+        variant: 'destructive',
+      });
+      const currentPath = window.location.pathname + window.location.search;
+      router.push(`/login?redirectTo=${encodeURIComponent(currentPath)}`);
+      return;
+    }
+
+    const result = addItem({ ...itemPayload, vendor_id: vendorId });
     if (!result.success && result.conflict) {
       setShowConflictDialog(true);
       return;
     }
 
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 1400);
+    flashAdded();
 
     toast({
       title: 'Added to Bag! 🍱',
@@ -79,9 +109,9 @@ function MealCard({ meal }: MealCardProps) {
 
   const handleReplaceAndAdd = () => {
     setShowConflictDialog(false);
-    clearAndAddItem(itemPayload);
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 1400);
+    if (!vendorId) return;
+    clearAndAddItem({ ...itemPayload, vendor_id: vendorId });
+    flashAdded();
 
     toast({
       title: 'Bag Updated! 🍱',
@@ -115,7 +145,11 @@ function MealCard({ meal }: MealCardProps) {
             
             {/* Veg Indicator */}
             <div className="absolute top-2.5 left-2.5">
-              <div className={`p-1 sm:p-1.5 rounded-lg backdrop-blur-md shadow-lg border border-white/20 flex items-center justify-center ${meal.is_vegetarian ? 'bg-green-500/90' : 'bg-red-500/90'}`}>
+              <div
+                role="img"
+                aria-label={meal.is_veg ? 'Vegetarian' : 'Non-vegetarian'}
+                className={`p-1 sm:p-1.5 rounded-lg backdrop-blur-md shadow-lg border border-white/20 flex items-center justify-center ${meal.is_veg ? 'bg-green-500/90' : 'bg-red-500/90'}`}
+              >
                 <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
               </div>
             </div>
@@ -133,11 +167,6 @@ function MealCard({ meal }: MealCardProps) {
               </div>
             )}
 
-            {/* Quick Like */}
-            <div className="absolute top-2.5 right-2.5 bg-white/80 backdrop-blur-md p-1.5 rounded-lg shadow-sm group-hover:scale-110 transition-transform cursor-pointer">
-               <span className="text-sm">🤍</span>
-            </div>
-
             {/* Floating Performance Data */}
             <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center">
               <div className="bg-[#1A1A1A]/90 backdrop-blur-md text-white px-2 py-0.5 sm:py-1 rounded-lg flex items-center gap-1 text-[0.6rem] font-bold shadow-lg border border-white/10">
@@ -145,10 +174,12 @@ function MealCard({ meal }: MealCardProps) {
                 {meal.rating && meal.rating > 0 ? meal.rating.toFixed(1) : 'New'}
               </div>
               
-              <div className="bg-white/95 backdrop-blur-md text-gray-900 px-2 py-0.5 sm:py-1 rounded-lg flex items-center gap-1 text-[0.6rem] font-black shadow-lg border border-orange-50">
-                <Clock className="w-2.5 h-2.5 text-orange-600" />
-                30m
-              </div>
+              {Number(meal.preparation_time) > 0 && (
+                <div className="bg-white/95 backdrop-blur-md text-gray-900 px-2 py-0.5 sm:py-1 rounded-lg flex items-center gap-1 text-[0.6rem] font-black shadow-lg border border-orange-50">
+                  <Clock className="w-2.5 h-2.5 text-orange-600" aria-hidden="true" />
+                  {meal.preparation_time}m prep
+                </div>
+              )}
             </div>
               {/* Sold-out overlay */}
               {meal.stock === 0 && (
@@ -162,9 +193,7 @@ function MealCard({ meal }: MealCardProps) {
           <CardContent className="p-3 sm:p-4">
             <div className="flex flex-col gap-0.5 mb-3">
               <div className="flex items-center gap-1 text-[0.55rem] font-black uppercase tracking-widest text-orange-600 mb-0.5">
-                <span>Chef Special</span>
-                <span className="w-1 h-1 bg-orange-600 rounded-full"></span>
-                <span className="hidden xs:inline">Home Made</span>
+                <span>Home Made</span>
               </div>
               <h3 className="font-extrabold text-sm sm:text-base text-gray-900 line-clamp-1 group-hover:text-orange-600 transition-colors leading-tight tracking-tight">
                 {meal.name}
@@ -184,10 +213,11 @@ function MealCard({ meal }: MealCardProps) {
                 </span>
               </div>
               
+              {orderable && (
               <button
                 type="button"
                 onClick={handleQuickAdd}
-                disabled={meal.stock === 0}
+                disabled={meal.stock === 0 || !vendorId}
                 aria-label={`Add ${meal.name} to cart`}
                 data-testid="quick-add-btn"
                 className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition-all duration-300 shadow-md group/btn cursor-pointer ${
@@ -202,6 +232,7 @@ function MealCard({ meal }: MealCardProps) {
                   <span className="text-base font-black group-hover/btn:rotate-90 transition-transform leading-none">+</span>
                 )}
               </button>
+              )}
             </div>
           </CardContent>
         </Card>

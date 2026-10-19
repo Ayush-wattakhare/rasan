@@ -42,7 +42,8 @@ export async function GET(request: Request) {
         const { error: insertErr } = await serviceClient.from('profiles').upsert(
           {
             id: user.id,
-            email: user.email || '',
+            // NULL, never '': several users without an email would collide on UNIQUE(email).
+            email: user.email || null,
             name: fullName,
             role: 'customer',
             is_active: true,

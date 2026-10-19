@@ -97,6 +97,7 @@ export interface Database {
           rating: number;
           total_orders: number;
           is_active: boolean;
+          is_approved: boolean;
           bank_details: BankDetails | null;
           documents: VendorDocuments | null;
           created_at: string;
@@ -116,6 +117,7 @@ export interface Database {
           rating?: number;
           total_orders?: number;
           is_active?: boolean;
+          is_approved?: boolean;
           bank_details?: BankDetails | null;
           documents?: VendorDocuments | null;
           created_at?: string;
@@ -135,6 +137,7 @@ export interface Database {
           rating?: number;
           total_orders?: number;
           is_active?: boolean;
+          is_approved?: boolean;
           bank_details?: BankDetails | null;
           documents?: VendorDocuments | null;
           created_at?: string;
@@ -404,6 +407,7 @@ export interface Database {
           auto_renew: boolean;
           deliveries: SubscriptionDelivery[];
           order_id: string | null;
+          paused_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -424,6 +428,7 @@ export interface Database {
           auto_renew?: boolean;
           deliveries?: SubscriptionDelivery[];
           order_id?: string | null;
+          paused_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -444,6 +449,7 @@ export interface Database {
           auto_renew?: boolean;
           deliveries?: SubscriptionDelivery[];
           order_id?: string | null;
+          paused_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

@@ -1,74 +1,42 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { loadOwnedSubscription, notify, requireStatus, saveSubscription } from '@/lib/subscriptions/manage';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** Cancels a plan. Refunds for paid plans are handled by support (no automatic refund yet). */
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { id } = await params;
+    const loaded = await loadOwnedSubscription(id);
+    if (!loaded.ok) return loaded.response;
+    const { sub, userId } = loaded;
 
-    // Verify ownership
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('customer_id, status, payment_status')
-      .eq('id', id)
-      .single();
+    const statusError = requireStatus(
+      sub,
+      ['active', 'paused', 'pending_payment'],
+      sub.status === 'cancelled' ? 'Subscription is already cancelled' : 'This subscription can no longer be cancelled'
+    );
+    if (statusError) return statusError.response;
 
-    if (!subscription || subscription.customer_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const saved = await saveSubscription(sub, { status: 'cancelled' });
+    if (!saved.ok) return saved.response;
 
-    if (subscription.status === 'cancelled') {
-      return NextResponse.json(
-        { error: 'Subscription is already cancelled' },
-        { status: 400 }
-      );
-    }
-
-    // Update subscription status to cancelled
-    const { data: updated, error } = await supabase
-      .from('subscriptions')
-      .update({ status: 'cancelled' })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error cancelling subscription:', error);
-      return NextResponse.json(
-        { error: 'Failed to cancel subscription' },
-        { status: 500 }
-      );
-    }
-
-    // Send notification
-    await createServiceClient().from('notifications').insert({
-      user_id: user.id,
+    await notify(userId, {
       type: 'system',
       title: 'Subscription Cancelled',
-      message: 'Your subscription has been cancelled. No further deliveries will be made.',
+      message:
+        'Your subscription has been cancelled and no further meals will be delivered. ' +
+        'If you paid online, our team will review a refund for undelivered meals.',
+      data: { subscription_id: id },
+    });
+    await notify(sub.vendors?.user_id, {
+      type: 'order',
+      title: 'Subscription Cancelled',
+      message: 'A subscriber cancelled their plan. Remove them from upcoming prep lists.',
       data: { subscription_id: id },
     });
 
-    // In production, process refund if applicable
-    // This would integrate with payment gateway
-
-    return NextResponse.json(updated);
+    return NextResponse.json(saved.subscription);
   } catch (error) {
     console.error('Error in POST /api/subscriptions/[id]/cancel:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

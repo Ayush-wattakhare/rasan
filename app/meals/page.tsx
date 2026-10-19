@@ -9,6 +9,12 @@ import SortDropdown from '@/components/meals/sort-dropdown';
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { parsePageParam } from '@/lib/utils/search';
+import { resolveListingArea } from '@/lib/location/listing-area';
+import { PreviewBanner, ServiceAreaEmptyState } from '@/components/location/service-area-empty-state';
+
+const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -18,22 +24,44 @@ export default async function MealsPage({ searchParams }: PageProps) {
   const supabase = await createClient();
   const params = await searchParams;
 
-  // Parse filters
+  // Parse filters (param names match components/meals/horizontal-preferences.tsx)
+  const mealType = typeof params.mealType === 'string' && MEAL_TYPES.includes(params.mealType as MealType)
+    ? (params.mealType as MealType)
+    : undefined;
   const filters: MealFiltersType = {
     category: typeof params.category === 'string' ? params.category : undefined,
-    mealType: typeof params.mealType === 'string' ? params.mealType as MealType : undefined,
-    isVegetarian: typeof params.isVegetarian === 'string' ? params.isVegetarian === 'true' : undefined,
+    mealType,
+    // Only "true" filters; the toggle being off means "all meals", not "non-veg only".
+    isVegetarian: params.isVegetarian === 'true' ? true : undefined,
+    cuisine: typeof params.cuisine === 'string' ? params.cuisine.slice(0, 40) : undefined,
     search: typeof params.search === 'string' ? params.search : undefined,
     sortBy: (typeof params.sortBy === 'string' ? params.sortBy : undefined) as MealFiltersType['sortBy'],
   };
 
-  const page = typeof params.page === 'string' ? parseInt(params.page) : 1;
+  const page = parsePageParam(params.page);
   const limit = 12;
 
+  // Only kitchens that deliver to the customer (or a labelled city preview).
+  const listing = await resolveListingArea(supabase, params.preview);
+  const isPreview = listing.mode === 'preview';
+  if (listing.mode !== 'empty') {
+    filters.vendorIds = listing.kitchens.map((k) => k.id);
+  }
+
+  const emptyResult = { meals: [], total: 0, page, limit, totalPages: 0 };
   const [mealsResult, categories] = await Promise.all([
-    getMeals(supabase, filters, page, limit),
+    listing.mode === 'empty' ? Promise.resolve(emptyResult) : getMeals(supabase, filters, page, limit),
     getMealCategories(supabase),
   ]);
+
+  // A page past the end (old link, fewer results now): go to the first page.
+  if (listing.mode !== 'empty' && page > 1 && mealsResult.meals.length === 0) {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key !== 'page' && typeof value === 'string') qs.set(key, value);
+    }
+    redirect(qs.toString() ? `/meals?${qs}` : '/meals');
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] pb-32">
@@ -79,6 +107,10 @@ export default async function MealsPage({ searchParams }: PageProps) {
           </div>
         </div>
 
+        {isPreview && (
+          <PreviewBanner label={listing.previewLabel} city={listing.city} basePath="/meals" />
+        )}
+
         {/* Horizontal Preferences (New Location) */}
         <HorizontalPreferences categories={categories} />
 
@@ -86,7 +118,7 @@ export default async function MealsPage({ searchParams }: PageProps) {
         <div className="space-y-6 sm:space-y-10">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-gray-50 pb-4 sm:pb-6">
             <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#1A1A1A] tracking-tighter uppercase italic flex flex-wrap items-center gap-2 sm:gap-4">
-              Active Menus
+              {isPreview ? `Menus in ${listing.previewLabel}` : 'Menus Near You'}
               <span className="text-xs sm:text-sm font-bold text-gray-400 border border-gray-100 px-2 sm:px-3 py-1 rounded-lg sm:rounded-xl">
                 {mealsResult.total} AVAILABLE
               </span>
@@ -96,8 +128,15 @@ export default async function MealsPage({ searchParams }: PageProps) {
             </div>
           </div>
 
-          {mealsResult.meals.length > 0 ? (
-            <MealGrid meals={mealsResult.meals as any} />
+          {listing.mode === 'empty' ? (
+            <ServiceAreaEmptyState
+              status={listing.status}
+              city={listing.city}
+              previewHref="/meals?preview=pune"
+              noun="dishes"
+            />
+          ) : mealsResult.meals.length > 0 ? (
+            <MealGrid meals={mealsResult.meals as any} orderable={!isPreview} />
           ) : (
             <div className="bg-white rounded-[3rem] p-24 text-center border-2 border-dashed border-gray-100">
               <div className="w-20 h-20 bg-gray-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
@@ -106,7 +145,7 @@ export default async function MealsPage({ searchParams }: PageProps) {
               <h3 className="text-2xl font-black text-[#1A1A1A] uppercase italic">Zero Matches Detected</h3>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-4 max-w-sm mx-auto leading-relaxed">Our chefs are busy preparing new recipes. Adjust your preference horizon to find available delicacies.</p>
               <Button variant="outline" className="mt-8 rounded-2xl h-12 px-8 font-black uppercase tracking-widest border-2 hover:bg-orange-50 border-gray-100" asChild>
-                <Link href="/meals">Reset All Preferences</Link>
+                <Link href={isPreview ? '/meals?preview=pune' : '/meals'}>Reset All Preferences</Link>
               </Button>
             </div>
           )}

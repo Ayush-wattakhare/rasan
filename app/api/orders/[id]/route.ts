@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { HANDOVER_EMBED } from '@/lib/utils/delivery-otp';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -83,13 +83,42 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(typeof body.rating.comment === 'string' ? { comment: body.rating.comment.slice(0, 1000) } : {}),
       };
 
-      const { error } = await supabase
+      // Customers no longer have direct UPDATE on orders (migration 006);
+      // ownership and status were checked above, so write with the service role.
+      const { error } = await createServiceClient()
         .from('orders')
         .update({ rating, updated_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('customer_id', user.id)
+        .eq('status', 'delivered');
 
       if (error) {
         return NextResponse.json({ error: 'Failed to save rating' }, { status: 500 });
+      }
+
+      // Kitchen ratings come from the reviews table (migration 006), so record
+      // the food score there too (one review per order, on its first meal).
+      const { data: fullOrder } = await createServiceClient()
+        .from('orders')
+        .select('items')
+        .eq('id', id)
+        .maybeSingle();
+      const firstMealId = (fullOrder?.items as any[] | null)?.[0]?.meal_id;
+      if (firstMealId) {
+        const { error: reviewError } = await createServiceClient()
+          .from('reviews')
+          .upsert(
+            {
+              order_id: id,
+              meal_id: firstMealId,
+              user_id: user.id,
+              rating: food,
+              comment: (rating as { comment?: string }).comment ?? null,
+              images: [],
+            },
+            { onConflict: 'meal_id,user_id,order_id' }
+          );
+        if (reviewError) console.error('Review upsert from order rating failed:', reviewError);
       }
 
       return NextResponse.json({ success: true });

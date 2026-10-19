@@ -10,6 +10,7 @@ import { CancelOrderModal } from './cancel-order-modal';
 import type { Order } from '@/lib/supabase/types';
 import { format } from 'date-fns';
 import { getDeliveryOtp } from '@/lib/utils/delivery-otp';
+import { coordsFromAddress } from '@/lib/utils/geo';
 
 // Dynamic import keeps Leaflet out of SSR bundle
 const OrderLiveMap = dynamic(() => import('@/components/orders/order-live-map'), {
@@ -30,8 +31,36 @@ interface OrderTrackerProps {
   isRefreshing?: boolean;
 }
 
-// Default vendor/delivery coordinates
-const VENDOR_LOCATION = { lat: 18.6279, lng: 73.8009 };
+type LatLng = { lat: number; lng: number };
+
+/** Loads the kitchen's real pinned location (null if the kitchen hasn't set one). */
+function useVendorLocation(vendorId: string | null | undefined) {
+  const [state, setState] = useState<{ loading: boolean; location: LatLng | null }>({
+    loading: !!vendorId,
+    location: null,
+  });
+
+  useEffect(() => {
+    if (!vendorId) {
+      setState({ loading: false, location: null });
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/vendors/${vendorId}/location`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const ok = typeof data?.lat === 'number' && typeof data?.lng === 'number';
+        setState({ loading: false, location: ok ? { lat: data.lat, lng: data.lng } : null });
+      })
+      .catch(() => !cancelled && setState({ loading: false, location: null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
+
+  return state;
+}
 
 export function OrderTracker({
   order,
@@ -82,16 +111,12 @@ export function OrderTracker({
   const isEnRoute = order.status === 'out_for_delivery';
   const canCancel = ['pending', 'confirmed'].includes(order.status);
 
-  // Try to extract delivery coords from delivery_address field
-  const deliveryCoords = (() => {
-    const addr = (order as any).delivery_address;
-    if (addr?.coordinates?.lat && addr?.coordinates?.lng) {
-      return { lat: addr.coordinates.lat, lng: addr.coordinates.lng };
-    }
-    if (addr?.lat && addr?.lng) return { lat: addr.lat, lng: addr.lng };
-    if (addr?.latitude && addr?.longitude) return { lat: addr.latitude, lng: addr.longitude };
-    return { lat: VENDOR_LOCATION.lat + 0.015, lng: VENDOR_LOCATION.lng + 0.012 };
-  })();
+  // Real coordinates only: never invent a kitchen or doorstep position.
+  const deliveryCoords = coordsFromAddress((order as any).delivery_address) ?? undefined;
+  const { loading: vendorLocationLoading, location: vendorLocation } = useVendorLocation(
+    (order as any).vendor_id
+  );
+  const hasAnyMapPoint = !!(deliveryCoords || vendorLocation || (order as any).delivery_partner_id);
 
   return (
     <>
@@ -122,7 +147,13 @@ export function OrderTracker({
               </div>
               <div>
                 <h4 className="text-sm font-black text-red-950 uppercase tracking-tight">Order Cancelled</h4>
-                <p className="text-xs text-red-700 font-medium">Full refund processed to your payment method.</p>
+                <p className="text-xs text-red-700 font-medium">
+                  {order.payment_status === 'refunded'
+                    ? 'A refund has been initiated to your original payment method.'
+                    : order.payment_method === 'cash'
+                      ? 'No payment was collected for this order.'
+                      : 'This order has been cancelled.'}
+                </p>
               </div>
             </div>
             <span className="text-[0.65rem] font-black uppercase tracking-wider bg-red-100 text-red-700 px-3 py-1 rounded-full border border-red-200">
@@ -149,24 +180,25 @@ export function OrderTracker({
                 </span>
               </div>
 
-              {/* The actual map */}
-              <OrderLiveMap
-                orderId={order.id}
-                vendorLocation={VENDOR_LOCATION}
-                deliveryLocation={deliveryCoords}
-                deliveryPartnerId={(order as any).delivery_partner_id || undefined}
-              />
-
-              {/* ETA chip */}
-              {!isDelivered && (
-                <div className="mt-4 flex justify-center">
-                  <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl px-6 py-3 flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-blue-400" />
-                    <div>
-                      <p className="text-[0.55rem] font-black text-gray-500 uppercase tracking-widest">Estimated Arrival</p>
-                      <p className="text-base font-black text-white">~12 mins</p>
-                    </div>
-                  </div>
+              {/* The actual map (mounted once the kitchen location is known; the
+                  map initialises its pins on mount). ETA is shown inside the map. */}
+              {vendorLocationLoading ? (
+                <div className="w-full h-[380px] rounded-3xl bg-[#1A1A1A] animate-pulse flex items-center justify-center">
+                  <p className="text-[0.6rem] font-black text-gray-600 uppercase tracking-widest">Loading Map…</p>
+                </div>
+              ) : hasAnyMapPoint ? (
+                <OrderLiveMap
+                  key={`${vendorLocation?.lat ?? 'x'},${vendorLocation?.lng ?? 'x'}`}
+                  orderId={order.id}
+                  vendorLocation={vendorLocation ?? undefined}
+                  deliveryLocation={deliveryCoords}
+                  deliveryPartnerId={(order as any).delivery_partner_id || undefined}
+                />
+              ) : (
+                <div className="w-full h-[200px] rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-center px-6">
+                  <p className="text-xs font-bold text-gray-400">
+                    Live map will appear once the kitchen or your delivery pin has a location.
+                  </p>
                 </div>
               )}
             </div>

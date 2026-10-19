@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database.types';
 import type { Profile, ProfileUpdate } from '@/lib/supabase/types';
 import type { Address } from '@/types';
+import { imageExtensionFor } from '@/lib/utils/image-upload';
 
 type SupabaseClientType = SupabaseClient<Database>;
 
@@ -115,20 +116,12 @@ export async function uploadAvatar(
   userId: string,
   file: File
 ): Promise<string | null> {
-  // Validate file type
-  if (!file.type.startsWith('image/')) {
-    console.error('File must be an image');
+  // Raster images only (SVG can carry script); extension from the type, never the file name.
+  const fileExt = imageExtensionFor(file);
+  if (!fileExt) {
+    console.error('Avatar must be a JPEG, PNG or WebP image under 5 MB');
     return null;
   }
-
-  // Validate file size (5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    console.error('File size must be less than 5MB');
-    return null;
-  }
-
-  // Generate unique filename
-  const fileExt = file.name.split('.').pop();
   const fileName = `${userId}-${Date.now()}.${fileExt}`;
   const filePath = `avatars/${fileName}`;
 

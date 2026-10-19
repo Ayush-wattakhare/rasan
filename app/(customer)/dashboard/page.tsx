@@ -8,6 +8,9 @@ import TopMealsSection from './top-meals-section';
 import CustomerSearch from './customer-search';
 import HighestRatedVendors from '@/components/home/highest-rated-vendors';
 import { EmbeddedKitchenCircle } from '@/components/subscriptions/embedded-kitchen-circle';
+import { ServiceAreaEmptyState } from '@/components/location/service-area-empty-state';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { getServiceArea } from '@/lib/location/nearby';
 
 export default async function CustomerDashboard() {
   const supabase = await createClient();
@@ -50,28 +53,43 @@ export default async function CustomerDashboard() {
     console.error('Error loading subscription for dashboard:', err);
   }
 
-  // Fetch top rated meals from verified proper vendors only
+  // Only kitchens that deliver to the customer's saved location (same rule as home, /meals, checkout).
+  const area = await getServiceArea(supabase, await getDeliveryLocation());
+  const nearbyKitchens = area.status === 'available' ? area.kitchens : [];
+  const emptyStatus =
+    area.status === 'available'
+      ? null
+      : area.status === 'no-location'
+        ? ('no-location' as const)
+        : area.reason === 'lookup-failed'
+          ? ('lookup-failed' as const)
+          : ('unavailable' as const);
+  const areaCity = area.status === 'no-location' ? '' : area.location.city;
+
+  // Top rated dishes from those kitchens only
   let topMeals: any[] = [];
-  try {
-    const { data: mealsData } = await supabase
-      .from('meals')
-      .select(`
-        *,
-        vendors!inner (
-          id,
-          business_name,
-          rating,
-          is_active
-        )
-      `)
-      .eq('is_available', true)
-      .eq('vendors.is_active', true)
-      .not('vendors.business_name', 'ilike', '%test%')
-      .order('rating', { ascending: false })
-      .limit(8);
-    topMeals = mealsData || [];
-  } catch (err) {
-    console.error('Error loading top meals for dashboard:', err);
+  if (nearbyKitchens.length > 0) {
+    try {
+      const { data: mealsData } = await supabase
+        .from('meals')
+        .select(`
+          *,
+          vendors!inner (
+            id,
+            business_name,
+            rating,
+            is_active
+          )
+        `)
+        .in('vendor_id', nearbyKitchens.map((k) => k.id))
+        .eq('is_available', true)
+        .eq('vendors.is_active', true)
+        .order('rating', { ascending: false })
+        .limit(8);
+      topMeals = mealsData || [];
+    } catch (err) {
+      console.error('Error loading top meals for dashboard:', err);
+    }
   }
 
   // Only active subscribers of a weekly/monthly tiffin plan get access to Kitchen Circle & Tomorrow's Menu
@@ -189,20 +207,26 @@ export default async function CustomerDashboard() {
             </Link>
           </div>
 
-          {topMeals && topMeals.length > 0 ? (
-            /* Fixed the Grid Issue: Pass the whole list to TopMealsSection */
+          {emptyStatus ? (
+            <ServiceAreaEmptyState
+              status={emptyStatus}
+              city={areaCity}
+              previewHref="/meals?preview=pune"
+              noun="dishes"
+            />
+          ) : topMeals.length > 0 ? (
             <TopMealsSection meals={topMeals as any} />
           ) : (
             <div className="bg-white rounded-3xl p-16 text-center border-2 border-dashed border-gray-100">
                <ShoppingBag className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-               <h3 className="text-xl font-black text-gray-900 uppercase">Curating Excellence...</h3>
-               <p className="text-xs font-medium text-gray-400 mt-2 max-w-sm mx-auto">Our master chefs are currently establishing their supply lines. Check back shortly.</p>
+               <h3 className="text-xl font-black text-gray-900 uppercase">No dishes available right now</h3>
+               <p className="text-xs font-medium text-gray-400 mt-2 max-w-sm mx-auto">Kitchens near you haven&apos;t listed any available dishes yet. Check back shortly.</p>
             </div>
           )}
         </div>
 
-        {/* Highest Rated Kitchens Leaderboard */}
-        <HighestRatedVendors />
+        {/* Highest Rated Kitchens Leaderboard (nearby only) */}
+        <HighestRatedVendors kitchens={nearbyKitchens} />
 
         {/* Premium Quick Access Hub */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-24">

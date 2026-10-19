@@ -5,7 +5,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import NavigationMap from '@/components/delivery/navigation-map';
 import { OrderLocationPreviewModal } from '@/components/delivery/order-location-preview-modal';
 import { RedeemModal } from '@/components/payouts/redeem-modal';
 import { DeliveryOtpModal } from '@/components/delivery/delivery-otp-modal';

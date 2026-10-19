@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveApplicantAccount } from '@/lib/auth/applicant-account';
+import { applicationStatusOf, notifyAdmins } from '@/lib/notifications/admin-alerts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,17 +49,29 @@ export async function POST(request: NextRequest) {
     // Check if vendor record already exists for user
     const { data: existingVendor } = await serviceSupabase
       .from('vendors')
-      .select('id, business_name, is_active')
+      .select('id, business_name, is_active, documents')
       .eq('user_id', targetUserId)
       .maybeSingle();
 
     if (existingVendor) {
-      await serviceSupabase.from('profiles').update({ role: 'vendor' }).eq('id', targetUserId);
+      // Never change the role here: re-applying must not re-activate a declined
+      // or blocked kitchen, or switch an approved rider back to an unapproved kitchen.
+      const status = applicationStatusOf(existingVendor.documents);
+      if (status === 'declined' || status === 'blocked') {
+        return NextResponse.json(
+          { error: `Your kitchen application was ${status}. Please contact support.` },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({
         success: true,
         alreadyExists: true,
-        message: 'You already have an active or pending vendor profile.',
-        vendor: existingVendor,
+        applicationStatus: status,
+        message:
+          status === 'approved'
+            ? 'Your kitchen is already approved.'
+            : 'Your kitchen application is pending admin review.',
+        vendor: { id: existingVendor.id, business_name: existingVendor.business_name, is_active: existingVendor.is_active },
       });
     }
 
@@ -109,24 +122,30 @@ export async function POST(request: NextRequest) {
     if (vendorError) {
       console.error('Error inserting vendor application:', vendorError);
       return NextResponse.json(
-        { error: `Failed to submit vendor application: ${vendorError.message}` },
+        { error: 'Failed to submit vendor application. Please try again.' },
         { status: 500 }
       );
     }
 
-    // Crucial: Update user profile role to 'vendor' and set is_verified: false for admin review
-    await serviceSupabase
+    // Role switches to vendor for review; the kitchen stays unapproved (vendors.is_approved).
+    const { error: roleError } = await serviceSupabase
       .from('profiles')
       .update({ role: 'vendor', is_verified: false })
       .eq('id', targetUserId);
+    if (roleError) console.error('Vendor applicant role update error:', roleError);
 
-    // Send admin notification
+    // Admins review applications; the applicant gets a receipt.
+    await notifyAdmins({
+      title: 'New Vendor Application',
+      message: `"${String(businessName).slice(0, 80)}" applied to join as a home chef. Pending review.`,
+      data: { vendor_id: vendor.id, user_id: targetUserId },
+    });
     try {
       await serviceSupabase.from('notifications').insert({
         user_id: targetUserId,
         type: 'system',
-        title: 'New Vendor Application Submitted',
-        message: `User applied to join as chef "${businessName}". Pending admin review.`,
+        title: 'Application Received',
+        message: `Thanks for applying with "${String(businessName).slice(0, 80)}". We'll review it within 24-48 hours.`,
         is_read: false,
       });
     } catch {
@@ -141,9 +160,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Unexpected error in vendor application:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

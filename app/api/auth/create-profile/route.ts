@@ -5,16 +5,19 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 // for an auth user that signed up moments ago with the same email.
 const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
 
+function cleanText(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, max) : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const {
       userId,
-      email,       // optional for phone-only signups
-      name,
-      phone,
+      email, // optional for phone-only signups
       role,
-      phoneVerified = false,  // true when user verified via OTP
       businessName,
       businessDesc,
       fssai,
@@ -24,29 +27,26 @@ export async function POST(request: NextRequest) {
       vehicleType,
       vehicleNumber,
       licenseNumber,
-    } = body;
+    } = body ?? {};
+    const name = cleanText(body?.name, 100);
 
-    // Validate required fields (email is optional for phone-first signups)
     if (!userId || !name) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (role === 'admin') {
+      return NextResponse.json({ error: 'Admin role cannot be self-assigned' }, { status: 403 });
+    }
+    const safeRole: 'customer' | 'vendor' | 'delivery' =
+      role === 'vendor' || role === 'delivery' ? role : 'customer';
+
+    if (safeRole === 'delivery' && (!cleanText(vehicleNumber, 20) || !cleanText(licenseNumber, 30))) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Vehicle number and driving license number are required' },
         { status: 400 }
       );
     }
 
-    // Security check: prevent privilege escalation to admin role
-    if (role === 'admin') {
-      return NextResponse.json(
-        { error: 'Admin role cannot be self-assigned' },
-        { status: 403 }
-      );
-    }
-
-    // Allowed self-registration roles
-    const safeRole: 'customer' | 'vendor' | 'delivery' = 
-      role === 'vendor' || role === 'delivery' ? role : 'customer';
-
-    // Use service role client to bypass RLS
     const supabase = createServiceClient();
 
     // Resolve the user from the session when there is one; never trust body.userId alone.
@@ -55,135 +55,132 @@ export async function POST(request: NextRequest) {
       data: { user: sessionUser },
     } = await sessionClient.auth.getUser();
 
-    let targetUserId: string;
-    let verifiedEmail: string;
-
-    if (sessionUser) {
-      targetUserId = sessionUser.id;
-      verifiedEmail = sessionUser.email || email || null;
-    } else {
-      const { data: authLookup } = await supabase.auth.admin.getUserById(userId);
-      const authUser = authLookup?.user;
-      const createdAt = authUser?.created_at ? new Date(authUser.created_at).getTime() : 0;
-
-      // Phone-OTP users: authUser.email may be null — that is valid.
-      // For email-signup users: verify the email matches and the account is fresh.
-      const isPhoneOnlyUser = !authUser?.email && !!authUser?.phone;
-
-      if (!authUser) {
+    let authUser = sessionUser;
+    if (!authUser) {
+      const { data: authLookup } = await supabase.auth.admin.getUserById(String(userId));
+      const candidate = authLookup?.user ?? null;
+      if (!candidate) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
-      if (!isPhoneOnlyUser) {
-        // Email-signup path: verify email matches and account is fresh
-        const isFreshSignup =
-          !authUser?.email_confirmed_at || Date.now() - createdAt <= SIGNUP_WINDOW_MS;
+      // Phone-OTP sign-ups always have a session after verifying the code.
+      // Without one, only a brand-new email sign-up with the same email qualifies.
+      const createdAt = candidate.created_at ? new Date(candidate.created_at).getTime() : 0;
+      const isFresh = Date.now() - createdAt <= SIGNUP_WINDOW_MS;
+      const emailMatches =
+        !!candidate.email &&
+        typeof email === 'string' &&
+        candidate.email.toLowerCase() === email.trim().toLowerCase();
 
-        if (
-          !authUser.email ||
-          authUser.email.toLowerCase() !== String(email).toLowerCase() ||
-          !isFreshSignup
-        ) {
-          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+      if (!emailMatches || !isFresh) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-
-      targetUserId = authUser.id;
-      verifiedEmail = authUser.email || email || null;
+      authUser = candidate;
     }
 
-    // Check if profile already exists
+    const targetUserId = authUser.id;
+    const verifiedEmail = authUser.email || null;
+    // Phone comes from the auth record when Supabase verified it (OTP); a typed
+    // number is stored unverified so it can't block anyone else's phone sign-up.
+    const authPhone = authUser.phone ? `+${String(authUser.phone).replace(/^\+/, '')}` : null;
+    const phoneVerified = !!authPhone && !!authUser.phone_confirmed_at;
+    const phone = phoneVerified ? authPhone : cleanText(body?.phone, 20);
+
     const { data: existingProfile } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', targetUserId)
-      .single();
+      .maybeSingle();
 
     if (existingProfile) {
-      return NextResponse.json(
-        { error: 'Profile already exists' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: 'Profile already exists' }, { status: 409 });
     }
 
-    // New vendors & delivery partners default to is_verified = false (Pending Admin Review)
-    const isPendingReview = role === 'vendor' || role === 'delivery';
-    const isVerified = !isPendingReview;
+    // New vendors & delivery partners start unverified (pending admin review).
+    const isPendingReview = safeRole !== 'customer';
 
-    // Create profile
     const { data, error } = await supabase
       .from('profiles')
       .insert({
         id: targetUserId,
-        email: verifiedEmail || null,
+        email: verifiedEmail,
         name,
-        phone: phone || null,
+        phone,
+        phone_verified: phoneVerified,
         role: safeRole,
         is_active: true,
-        is_verified: isVerified,
-      })
+        is_verified: !isPendingReview,
+      } as any)
       .select()
       .single();
 
     if (error) {
       console.error('Profile creation error:', error);
+      const duplicatePhone = error.code === '23505' && /phone/i.test(error.message);
       return NextResponse.json(
-        { error: 'Failed to create profile' },
-        { status: 500 }
+        { error: duplicatePhone ? 'This phone number is already registered.' : 'Failed to create profile' },
+        { status: duplicatePhone ? 409 : 500 }
       );
     }
 
-    // Auto-create Vendor Application Record if role === 'vendor'
-    if (role === 'vendor') {
-      try {
-        await supabase.from('vendors').insert({
-          user_id: targetUserId,
-          business_name: businessName || `${name}'s Kitchen`,
-          description: businessDesc || 'Homemade culinary specialties',
-          address: address || 'Main Kitchen Address',
-          phone: phone || '',
-          email: verifiedEmail,
-          cuisine: cuisines ? cuisines.split(',').map((c: string) => c.trim()).filter(Boolean) : ['Indian', 'Homemade'],
-          is_active: false,
-          location: 'POINT(72.8777 19.0760)' as any,
-          operating_hours: {
-            monday: { is_open: true, open_time: '09:00', close_time: '21:00' },
-          },
-          documents: {
-            fssai_license: fssai || 'FSSAI-PENDING',
-            gst_number: gst || null,
-          },
-        } as any);
-      } catch (vErr) {
-        console.error('Vendor application record creation error:', vErr);
-      }
+    // Partner application rows. A failure here must not leave a vendor/delivery
+    // role without an application (it would never reach the admin review queue).
+    let partnerError: unknown = null;
+
+    if (safeRole === 'vendor') {
+      const { error: vErr } = await supabase.from('vendors').insert({
+        user_id: targetUserId,
+        business_name: cleanText(businessName, 100) || `${name}'s Kitchen`,
+        description: cleanText(businessDesc, 1000) || 'Homemade culinary specialties',
+        address: cleanText(address, 300) || 'Address to be updated',
+        phone: phone || '',
+        email: verifiedEmail || '',
+        cuisine:
+          typeof cuisines === 'string' && cuisines.trim()
+            ? cuisines.split(',').map((c: string) => c.trim().slice(0, 40)).filter(Boolean).slice(0, 10)
+            : ['Indian', 'Homemade'],
+        is_active: false,
+        // vendors.location is NOT NULL: placeholder until the chef pins the kitchen
+        // (treated as "not set" by parseVendorLocation).
+        location: 'POINT(72.8777 19.0760)' as any,
+        operating_hours: {
+          monday: { is_open: true, open_time: '09:00', close_time: '21:00' },
+        },
+        documents: {
+          fssai_license: cleanText(fssai, 30) || 'FSSAI-PENDING',
+          gst_number: cleanText(gst, 20),
+        },
+      } as any);
+      partnerError = vErr;
     }
 
-    // Auto-create Delivery Application Record if role === 'delivery'
-    if (role === 'delivery') {
-      try {
-        await supabase.from('delivery_partners').insert({
-          user_id: targetUserId,
-          vehicle_type: (vehicleType as any) || 'bike',
-          vehicle_number: vehicleNumber || 'MH01AB1234',
-          license_number: licenseNumber || 'DL-PENDING',
-          is_online: false,
-          is_verified: false,
-          rating: 5.0,
-          total_deliveries: 0,
-          earnings: { today: 0, this_week: 0, this_month: 0, total: 0 },
-        } as any);
-      } catch (dErr) {
-        console.error('Delivery application record creation error:', dErr);
-      }
+    if (safeRole === 'delivery') {
+      const { error: dErr } = await supabase.from('delivery_partners').insert({
+        user_id: targetUserId,
+        vehicle_type: ['bike', 'scooter', 'car'].includes(vehicleType) ? vehicleType : 'bike',
+        vehicle_number: cleanText(vehicleNumber, 20)!,
+        license_number: cleanText(licenseNumber, 30)!,
+        is_online: false,
+        is_verified: false,
+        rating: 0,
+        total_deliveries: 0,
+        earnings: { today: 0, this_week: 0, this_month: 0, total: 0 },
+      } as any);
+      partnerError = dErr;
+    }
+
+    if (partnerError) {
+      console.error('Partner application record creation error:', partnerError);
+      await supabase.from('profiles').delete().eq('id', targetUserId);
+      return NextResponse.json(
+        { error: 'Could not save your partner application. Please try again.' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, profile: data });
   } catch (error) {
     console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

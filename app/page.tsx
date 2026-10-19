@@ -9,11 +9,30 @@ import CTASection from '@/components/home/cta-section';
 import Link from 'next/link';
 import { ArrowRight, Info } from 'lucide-react';
 import { Suspense } from 'react';
+import { createClient } from '@/lib/supabase/server';
+import { getDeliveryLocation } from '@/lib/location/server-location';
+import { getServiceArea } from '@/lib/location/nearby';
 
-export default function Home() {
+export default async function Home() {
+  // One lookup decides what this customer can order from; every section uses it.
+  const supabase = await createClient();
+  const area = await getServiceArea(supabase, await getDeliveryLocation());
+  const serviceStatus =
+    area.status === 'available'
+      ? ('available' as const)
+      : area.status === 'no-location'
+        ? ('no-location' as const)
+        : area.reason === 'lookup-failed'
+          ? ('lookup-failed' as const)
+          : ('unavailable' as const);
+
   return (
     <div className="flex flex-col">
-      <Hero />
+      <Hero
+        serviceStatus={serviceStatus}
+        areaName={area.status === 'no-location' ? '' : area.location.city}
+        kitchenCount={area.status === 'available' ? area.kitchens.length : 0}
+      />
       
       <div className="space-y-0">
         <Suspense fallback={
@@ -24,7 +43,7 @@ export default function Home() {
             </div>
           </div>
         }>
-          <FeaturedMeals />
+          <FeaturedMeals area={area} />
         </Suspense>
 
         <HowItWorks />
@@ -38,7 +57,7 @@ export default function Home() {
             </div>
           </div>
         }>
-          <PopularVendors />
+          <PopularVendors area={area} />
         </Suspense>
         <HyperlocalDelivery />
         <WomenEmpowerment />

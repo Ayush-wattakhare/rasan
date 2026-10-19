@@ -33,6 +33,17 @@ class Cache {
    * Set cached data with TTL in seconds
    */
   set<T>(key: string, data: T, ttl: number = 300): void {
+    // Bound memory: drop expired entries, then the oldest, once the cache is large.
+    if (this.store.size >= 1000) {
+      const now = Date.now();
+      for (const [k, entry] of this.store) {
+        if (now > entry.expiresAt) this.store.delete(k);
+      }
+      if (this.store.size >= 1000) {
+        const oldest = this.store.keys().next().value;
+        if (oldest !== undefined) this.store.delete(oldest);
+      }
+    }
     this.store.set(key, {
       data,
       expiresAt: Date.now() + ttl * 1000,
@@ -76,18 +87,8 @@ class Cache {
 // Singleton instance
 export const cache = new Cache();
 
-// Clean up expired entries every minute
-setInterval(() => {
-  const now = Date.now();
-  const keys = Array.from(cache['store'].keys());
-
-  keys.forEach((key) => {
-    const entry = cache['store'].get(key);
-    if (entry && now > entry.expiresAt) {
-      cache.delete(key);
-    }
-  });
-}, 60 * 1000);
+// Expired entries are removed lazily in get(). (A module-level setInterval here
+// leaked one timer per hot reload and kept serverless workers alive.)
 
 /**
  * Cache key generators

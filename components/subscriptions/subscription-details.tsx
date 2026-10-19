@@ -113,27 +113,12 @@ export default function SubscriptionDetails({
 
   const router = useRouter();
 
-  // If subscription has no deliveries, synthesize them for presentation
-  const rawDeliveries: any[] = useMemo(() => {
-    if (subscription.deliveries && subscription.deliveries.length > 0) {
-      return subscription.deliveries;
-    }
-    // Fallback: create next 14 weekdays
-    const days = [];
-    const now = new Date();
-    for (let i = 0; i < 20; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() + i);
-      if (d.getDay() !== 0 && d.getDay() !== 6) {
-        days.push({
-          date: d.toISOString().split('T')[0],
-          status: 'scheduled',
-          order_id: null,
-        });
-      }
-    }
-    return days;
-  }, [subscription.deliveries]);
+  // Only real scheduled deliveries. (Invented placeholder dates used to appear
+  // here, and skip/swap on them failed with "No scheduled delivery found".)
+  const rawDeliveries: any[] = useMemo(
+    () => (Array.isArray(subscription.deliveries) ? subscription.deliveries : []),
+    [subscription.deliveries]
+  );
 
   // Map deliveries by date string for O(1) calendar lookups
   const deliveriesMap = useMemo(() => {
@@ -602,6 +587,20 @@ export default function SubscriptionDetails({
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
               )}
               {actionMessage.text}
+            </div>
+          )}
+
+          {subscription.status === 'pending_payment' && (
+            <div role="status" className="p-4 rounded-2xl text-xs font-bold flex items-center gap-2 border bg-amber-50 text-amber-900 border-amber-200">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              This plan starts once payment is confirmed. Meals can be changed after that.
+            </div>
+          )}
+
+          {rawDeliveries.length === 0 && (
+            <div role="status" className="p-4 rounded-2xl text-xs font-bold flex items-center gap-2 border bg-gray-50 text-gray-700 border-gray-200">
+              <CalendarIcon className="w-4 h-4 text-gray-500 shrink-0" />
+              No deliveries are scheduled for this plan yet. Contact support if this looks wrong.
             </div>
           )}
 

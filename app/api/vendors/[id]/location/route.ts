@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { parseVendorLocation } from '@/lib/utils/geo';
 
 /**
  * GET /api/vendors/[id]/location
@@ -30,18 +31,12 @@ export async function GET(
     return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
   }
 
-  // Parse WKT "POINT(lng lat)" from PostGIS geography text cast
-  const match = vendor.location
-    ? String(vendor.location).match(/POINT\(([\d.\-]+)\s+([\d.\-]+)\)/)
-    : null;
-
-  if (!match) {
+  // Supabase returns GEOGRAPHY as hex EWKB; parsePointLocation also handles WKT/GeoJSON.
+  const coords = parseVendorLocation(vendor.location);
+  if (!coords) {
     // Vendor exists but has no location set yet
     return NextResponse.json({ lat: null, lng: null });
   }
 
-  return NextResponse.json({
-    lng: parseFloat(match[1]),
-    lat: parseFloat(match[2]),
-  });
+  return NextResponse.json(coords);
 }

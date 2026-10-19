@@ -88,11 +88,12 @@ export function DeliveryAddressSection({
     building_name: '',
     street: '',
     landmark: '',
-    city: 'Pimpri-Chinchwad',
-    state: 'Maharashtra',
-    zip_code: '411017',
-    lat: '18.6279',
-    lng: '73.8009',
+    city: '',
+    state: '',
+    zip_code: '',
+    // Empty until the customer pins the map or uses live GPS.
+    lat: '',
+    lng: '',
     receiver_name: '',
     receiver_phone: '',
     delivery_instructions: '',
@@ -108,40 +109,39 @@ export function DeliveryAddressSection({
     }));
   };
 
-  const handleSelectFromMap = (loc: AccurateLocationResult) => {
+  // Only overwrite fields the geocoder actually returned; keep what the user typed otherwise.
+  const applyLocation = (loc: AccurateLocationResult) => {
     setForm((prev) => ({
       ...prev,
-      street: loc.details.street || loc.details.full_address || loc.details.locality || prev.street || 'Main Road',
+      street: loc.details.street || loc.details.locality || loc.details.full_address || prev.street,
       building_name: prev.building_name || loc.details.building || '',
-      city: loc.details.city || 'Pimpri-Chinchwad',
-      state: loc.details.state || 'Maharashtra',
-      zip_code: loc.details.zip_code || '411017',
+      city: loc.details.city || prev.city,
+      state: loc.details.state || prev.state,
+      zip_code: loc.details.zip_code || prev.zip_code,
       lat: loc.lat.toString(),
       lng: loc.lng.toString(),
     }));
+  };
+
+  const handleSelectFromMap = (loc: AccurateLocationResult) => {
+    applyLocation(loc);
     toast({
       title: 'Location Pinned on Map',
-      description: `Mapped: ${loc.details.locality || 'Pimpri-Chinchwad'}. GPS coordinates updated.`,
+      description: `Mapped: ${loc.details.locality || loc.details.full_address || 'selected point'}.`,
     });
   };
 
   const handleAutoDetectLocation = async () => {
     setIsDetecting(true);
     try {
-      const loc = await getAccurateLocation();
-      setForm((prev) => ({
-        ...prev,
-        street: loc.details.street || loc.details.full_address || loc.details.locality || prev.street || 'Main Road',
-        building_name: prev.building_name || loc.details.building || '',
-        city: loc.details.city || 'Pimpri-Chinchwad',
-        state: loc.details.state || 'Maharashtra',
-        zip_code: loc.details.zip_code || '411017',
-        lat: loc.lat.toString(),
-        lng: loc.lng.toString(),
-      }));
+      const loc = await getAccurateLocation({ persist: false });
+      applyLocation(loc);
       toast({
         title: 'GPS Location Detected',
-        description: `Accurate within ±${Math.round(loc.accuracy)}m. Location auto-filled.`,
+        description:
+          loc.accuracy > 100
+            ? `Approximate (±${Math.round(loc.accuracy)} m). Use "Pin on Map" to adjust to your exact building.`
+            : `Accurate within ±${Math.round(loc.accuracy)} m. Location auto-filled.`,
       });
     } catch (err: any) {
       toast({
@@ -164,6 +164,16 @@ export function DeliveryAddressSection({
       });
       return;
     }
+    const lat = parseFloat(form.lat);
+    const lng = parseFloat(form.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      toast({
+        title: 'Pin Your Location',
+        description: 'Use "Detect GPS" or "Pin on Map" so the rider can find your door.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSaving(true);
 
@@ -180,10 +190,7 @@ export function DeliveryAddressSection({
       city: form.city.trim(),
       state: form.state.trim(),
       zip_code: form.zip_code.trim(),
-      coordinates: {
-        lat: parseFloat(form.lat) || 18.6279,
-        lng: parseFloat(form.lng) || 73.8009,
-      },
+      coordinates: { lat, lng },
       house_no: form.house_no.trim(),
       building_name: form.building_name.trim(),
       landmark: form.landmark.trim(),
@@ -437,7 +444,9 @@ export function DeliveryAddressSection({
                   <div className="flex items-center gap-2">
                     <Navigation className="w-4 h-4 text-orange-600" />
                     <span className="text-xs font-black text-gray-800 uppercase tracking-wider">
-                      {form.city || 'Pune'} (GPS: {parseFloat(form.lat).toFixed(3)}, {parseFloat(form.lng).toFixed(3)})
+                      {form.lat && form.lng
+                        ? `${form.city || 'Pinned'} (GPS: ${parseFloat(form.lat).toFixed(5)}, ${parseFloat(form.lng).toFixed(5)})`
+                        : 'Location not pinned yet'}
                     </span>
                   </div>
                 </div>

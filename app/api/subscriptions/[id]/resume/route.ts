@@ -1,80 +1,101 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import {
+  type Delivery,
+  checkDateChangeable,
+  istToday,
+  loadOwnedSubscription,
+  nextExtensionDate,
+  notify,
+  requireStatus,
+  saveSubscription,
+} from '@/lib/subscriptions/manage';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * Resumes a paused plan. Meals that fell inside the pause are marked as
+ * skipped and the same number of meals is added after the plan's last date,
+ * so the customer still gets everything they paid for.
+ */
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { id } = await params;
+    const loaded = await loadOwnedSubscription(id);
+    if (!loaded.ok) return loaded.response;
+    const { sub, userId } = loaded;
 
-    // Verify ownership and current status
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('customer_id, status, end_date')
-      .eq('id', id)
-      .single();
+    const statusError = requireStatus(sub, ['paused'], 'Only paused subscriptions can be resumed');
+    if (statusError) return statusError.response;
 
-    if (!subscription || subscription.customer_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const today = istToday();
+    const deliveries: Delivery[] = sub.deliveries.map((d) => ({ ...d }));
+
+    // Meals missed during the pause: from paused_at up to today; today counts as
+    // missed only if its same-day cutoff has already passed.
+    const missedIndexes = sub.paused_at
+      ? deliveries
+          .map((d, i) => ({ d, i }))
+          .filter(
+            ({ d }) =>
+              d.status === 'scheduled' &&
+              d.date >= sub.paused_at! &&
+              (d.date < today || (d.date === today && checkDateChangeable(sub, d.date) !== null))
+          )
+          .map(({ i }) => i)
+      : [];
+
+    if (missedIndexes.length === 0 && sub.end_date < today) {
+      return NextResponse.json({ error: 'Subscription has expired' }, { status: 400 });
     }
 
-    if (subscription.status !== 'paused') {
-      return NextResponse.json(
-        { error: 'Only paused subscriptions can be resumed' },
-        { status: 400 }
-      );
+    for (const i of missedIndexes) {
+      deliveries[i] = {
+        ...deliveries[i],
+        status: 'skipped',
+        skip_reason: 'Subscription paused',
+        skipped_at: new Date().toISOString(),
+      };
     }
 
-    // Check if subscription has expired
-    const endDate = new Date(subscription.end_date);
-    if (endDate < new Date()) {
-      return NextResponse.json(
-        { error: 'Subscription has expired' },
-        { status: 400 }
-      );
+    let endDate = sub.end_date;
+    for (const i of missedIndexes) {
+      const extension = nextExtensionDate({ ...sub, end_date: endDate }, deliveries);
+      if (!extension) break;
+      deliveries.push({
+        date: extension,
+        status: 'scheduled',
+        order_id: null,
+        is_extended: true,
+        replaced_date: deliveries[i].date,
+      });
+      endDate = extension;
     }
 
-    // Update subscription status to active
-    const { data: updated, error } = await supabase
-      .from('subscriptions')
-      .update({ status: 'active' })
-      .eq('id', id)
-      .select()
-      .single();
+    const saved = await saveSubscription(sub, {
+      status: 'active',
+      paused_at: null,
+      deliveries,
+      end_date: endDate,
+    });
+    if (!saved.ok) return saved.response;
 
-    if (error) {
-      console.error('Error resuming subscription:', error);
-      return NextResponse.json(
-        { error: 'Failed to resume subscription' },
-        { status: 500 }
-      );
-    }
-
-    // Send notification
-    await createServiceClient().from('notifications').insert({
-      user_id: user.id,
+    const moved = missedIndexes.length;
+    await notify(userId, {
       type: 'system',
       title: 'Subscription Resumed',
-      message: 'Your subscription has been resumed. Deliveries will continue as scheduled.',
+      message: moved
+        ? `Welcome back! ${moved} missed meal${moved === 1 ? '' : 's'} moved to the end of your plan (now ends ${endDate}).`
+        : 'Your subscription has been resumed. Deliveries continue as scheduled.',
+      data: { subscription_id: id, moved_meals: moved, end_date: endDate },
+    });
+    await notify(sub.vendors?.user_id, {
+      type: 'order',
+      title: 'Subscription Resumed',
+      message: 'A subscriber resumed their plan. Their meals are back on your schedule.',
       data: { subscription_id: id },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json(saved.subscription);
   } catch (error) {
     console.error('Error in POST /api/subscriptions/[id]/resume:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

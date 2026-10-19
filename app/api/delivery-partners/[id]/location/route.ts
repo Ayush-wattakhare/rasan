@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
+import { parsePointLocation } from '@/lib/utils/geo';
 import type { UserRole } from '@/types';
 
 async function canViewPartnerLocation(partnerId: string, userId: string, role: UserRole | null) {
@@ -48,42 +49,18 @@ export async function GET(
       .single();
 
     if (error || !partner) {
-      // Return default location if partner record not yet synced
-      return NextResponse.json({
-        success: true,
-        partner_id: id,
-        is_online: true,
-        lat: 18.6279,
-        lng: 73.8009,
-        updated_at: new Date().toISOString(),
-      });
+      return NextResponse.json({ error: 'Delivery partner not found' }, { status: 404 });
     }
 
-    let lat: number | null = null;
-    let lng: number | null = null;
-    if (partner.current_location) {
-      const loc = partner.current_location as any;
-      if (typeof loc === 'string') {
-        const match = loc.match(/POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-        if (match) {
-          lng = parseFloat(match[1]);
-          lat = parseFloat(match[2]);
-        }
-      } else if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
-        lng = loc.coordinates[0];
-        lat = loc.coordinates[1];
-      } else if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
-        lat = loc.lat;
-        lng = loc.lng;
-      }
-    }
+    // Supabase returns GEOGRAPHY as hex EWKB; never substitute a made-up position.
+    const coords = parsePointLocation(partner.current_location);
 
     return NextResponse.json({
       success: true,
       partner_id: partner.id,
       is_online: partner.is_online,
-      lat: lat ?? 18.6279,
-      lng: lng ?? 73.8009,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
       updated_at: partner.updated_at,
     });
   } catch (error: any) {
