@@ -31,13 +31,20 @@ describe('isUserRole', () => {
 });
 
 describe('isProtectedPath', () => {
-  it.each(['/dashboard', '/orders/123', '/payouts', '/subscriber-broadcast', '/settlements', '/meals', '/admin/setup'])(
-    'protects %s',
-    (path) => expect(isProtectedPath(path)).toBe(true)
-  );
+  it.each([
+    '/dashboard',
+    '/orders/123',
+    '/payouts',
+    '/subscriber-broadcast',
+    '/settlements',
+    '/admin/setup',
+    '/notifications',
+    '/checkout',
+  ])('protects %s', (path) => expect(isProtectedPath(path)).toBe(true));
 
-  it.each(['/', '/about', '/vendors', '/login', '/become-vendor'])('leaves %s public', (path) =>
-    expect(isProtectedPath(path)).toBe(false)
+  it.each(['/', '/about', '/vendors', '/login', '/become-vendor', '/meals', '/cart'])(
+    'leaves %s public',
+    (path) => expect(isProtectedPath(path)).toBe(false)
   );
 
   it('matches whole path segments only', () => {
@@ -51,6 +58,9 @@ describe('canAccessPath', () => {
     expect(canAccessPath('admin', '/settlements')).toBe(true);
     expect(canAccessPath('delivery', '/earnings')).toBe(true);
     expect(canAccessPath('customer', '/meals')).toBe(true);
+    expect(canAccessPath('vendor', '/meals')).toBe(true);
+    expect(canAccessPath('customer', '/notifications')).toBe(true);
+    expect(canAccessPath('vendor', '/notifications')).toBe(true);
   });
 
   it('blocks other roles', () => {
