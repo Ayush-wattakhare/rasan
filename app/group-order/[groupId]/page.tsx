@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import GroupOrderDetails from '@/components/group-orders/group-order-details';
 import { notFound } from 'next/navigation';
@@ -16,11 +16,12 @@ export default async function PublicGroupOrderPage({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/login?redirect=/group-order/${groupId}`);
+    redirect(`/login?redirectTo=${encodeURIComponent(`/group-order/${groupId}`)}`);
   }
 
-  // Fetch group order
-  const { data: groupOrder, error } = await supabase
+  // Anyone signed in with the link may view and join (RLS would only show the
+  // row to the host / existing participants, so invitees got a 404).
+  const { data: groupOrder, error } = await createServiceClient()
     .from('group_orders')
     .select(
       `

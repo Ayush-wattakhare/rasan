@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/auth/guards';
+import { isUserRole } from '@/lib/auth/roles';
+
+/** GET ?role=vendor|delivery|customer|admin&q=search — lightweight user picker for admin tools. */
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const role = request.nextUrl.searchParams.get('role');
+  // Strip characters that have meaning inside a PostgREST or() filter.
+  const q = (request.nextUrl.searchParams.get('q') || '').replace(/[^\p{L}\p{N}@.+\-_ ]/gu, '').trim().slice(0, 60);
+
+  let query = createServiceClient()
+    .from('profiles')
+    .select('id, name, email, phone, role, is_active')
+    .order('name', { ascending: true })
+    .limit(50);
+  if (role && isUserRole(role)) query = query.eq('role', role);
+  if (q) query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Admin users list failed:', error);
+    return NextResponse.json({ error: 'Could not load users' }, { status: 500 });
+  }
+  return NextResponse.json({ success: true, users: data || [] });
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin();
@@ -142,6 +168,8 @@ export async function POST(request: NextRequest) {
         rating: 0,
         total_orders: 0,
         is_active: true,
+        // Created by an admin, so it is approved (migration 006 vendors.is_approved).
+        is_approved: true,
       };
 
       const res = await serviceSupabase.from('vendors').insert([vendorPayload]);

@@ -96,53 +96,6 @@ export class OrderService {
   }
 
   /**
-   * Rate an order
-   */
-  async rateOrder(
-    orderId: string,
-    rating: { food: number; delivery: number; comment?: string }
-  ): Promise<Order> {
-    const { data, error } = await this.supabase
-      .from('orders')
-      .update({ rating })
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  /**
-   * Calculate order totals
-   */
-  calculateOrderTotals(
-    items: OrderItem[],
-    deliveryFee: number,
-    discount: number = 0
-  ): {
-    subtotal: number;
-    tax: number;
-    total: number;
-  } {
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-
-    // Tax is 5% of subtotal
-    const tax = subtotal * 0.05;
-
-    const total = subtotal + deliveryFee + tax - discount;
-
-    return {
-      subtotal: Math.round(subtotal * 100) / 100,
-      tax: Math.round(tax * 100) / 100,
-      total: Math.round(total * 100) / 100,
-    };
-  }
-
-  /**
    * Validate order items availability
    */
   async validateOrderItems(items: OrderItem[]): Promise<{

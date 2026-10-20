@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,11 +47,33 @@ export default function ActiveDeliveryCard({
   const isCashOnDelivery = order.payment_method === 'cash';
   const isPaid = paymentMarkedLocal || order.payment_status === 'completed' || order.payment_status === 'paid';
   const orderTotal = order.total || 0;
-  const deliveryEarnings = (order.delivery_fee && order.delivery_fee > 0) ? order.delivery_fee : 35.00;
+  // What the rider earns: rider_fee (set at delivery), else delivery fee, else the ₹35 minimum.
+  const deliveryEarnings = Number(order.rider_fee) > 0
+    ? Number(order.rider_fee)
+    : Number(order.delivery_fee) > 0
+      ? Number(order.delivery_fee)
+      : 35;
 
-  // Generate standard UPI payload for customer to scan and pay exact amount
-  const upiPayload = `upi://pay?pa=rasan.pay@okhdfcbank&pn=Rasan%20Foods&am=${orderTotal.toFixed(2)}&cu=INR&tn=Order%20${order.order_number}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(upiPayload)}`;
+  // UPI collection goes to Rasan's own account, configured per deployment.
+  // Without NEXT_PUBLIC_UPI_PAYEE_VPA the QR option is hidden (never a guessed payee).
+  const upiPayee = process.env.NEXT_PUBLIC_UPI_PAYEE_VPA || '';
+  const upiPayeeName = process.env.NEXT_PUBLIC_UPI_PAYEE_NAME || 'Rasan';
+  const upiPayload = upiPayee
+    ? `upi://pay?pa=${encodeURIComponent(upiPayee)}&pn=${encodeURIComponent(upiPayeeName)}&am=${orderTotal.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order ${order.order_number}`)}`
+    : '';
+  // Rendered in the browser: the payment payload is never sent to a third-party QR service.
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  useEffect(() => {
+    if (!showQrModal || !upiPayload) return;
+    let cancelled = false;
+    import('qrcode')
+      .then((QR) => QR.toDataURL(upiPayload, { width: 260, margin: 2 }))
+      .then((url) => !cancelled && setQrCodeUrl(url))
+      .catch(() => !cancelled && setQrCodeUrl(''));
+    return () => {
+      cancelled = true;
+    };
+  }, [showQrModal, upiPayload]);
 
   const postStatus = async (payload: Record<string, unknown>) => {
     const response = await fetch(`/api/orders/${order.id}/status`, {
@@ -208,11 +230,18 @@ export default function ActiveDeliveryCard({
 
             {/* Live QR Image */}
             <div className="p-3 bg-white border-2 border-gray-200 rounded-3xl shadow-inner inline-block mx-auto mb-4">
-              <img
-                src={qrCodeUrl}
-                alt="UPI Payment QR Code"
-                className="w-56 h-56 rounded-xl object-contain mx-auto"
-              />
+              {qrCodeUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- local data: URL
+                <img
+                  src={qrCodeUrl}
+                  alt={`UPI QR code to pay ${formatCurrency(orderTotal)} to ${upiPayeeName}`}
+                  className="w-56 h-56 rounded-xl object-contain mx-auto"
+                />
+              ) : (
+                <div className="w-56 h-56 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-orange-600" aria-label="Generating QR code" />
+                </div>
+              )}
             </div>
 
             {/* Supported App Logos / Text */}
@@ -267,7 +296,7 @@ export default function ActiveDeliveryCard({
               >
                 {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : `✓ Received ${formatCurrency(orderTotal)} & Deliver`}
               </Button>
-              <Button
+              {upiPayload && <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
@@ -278,7 +307,7 @@ export default function ActiveDeliveryCard({
               >
                 <QrCode className="w-4 h-4" />
                 Customer Wants to Pay via QR
-              </Button>
+              </Button>}
               <Button
                 type="button"
                 variant="ghost"
@@ -331,6 +360,8 @@ export default function ActiveDeliveryCard({
               <Button
                 type="button"
                 size="sm"
+                disabled={!upiPayload}
+                title={upiPayload ? undefined : 'UPI collection is not configured'}
                 onClick={() => setShowQrModal(true)}
                 className="h-10 bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 font-black text-[0.65rem] uppercase tracking-wider rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >

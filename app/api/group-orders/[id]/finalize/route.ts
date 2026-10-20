@@ -1,5 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
+import { calculateCartTotals } from '@/lib/pricing/order-pricing';
+import { sanitizeDeliveryAddress } from '@/lib/utils/address';
+import { releaseOrderStock, reserveOrderStock } from '@/lib/orders/stock';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -97,21 +100,26 @@ export async function POST(
       });
     }
 
-    // Calculate totals
-    const subtotal = allItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const deliveryFee = 50; // Fixed for group orders
-    const tax = subtotal * 0.05;
-    const total = subtotal + deliveryFee + tax;
+    // Same pricing as every other order (lib/pricing/order-pricing.ts).
+    const totals = calculateCartTotals(allItems.map((i) => ({ price: i.price, quantity: i.quantity })));
+    const subtotal = totals.subtotal;
+    const deliveryFee = totals.delivery_fee;
+    const tax = totals.platform_fee;
+    const total = totals.total;
 
-    // Get host's address (use first participant's address or default)
-    const { data: hostProfile } = await supabase
+    // Delivered to the host's saved address; never to an empty placeholder.
+    const { data: hostProfile } = await serviceClient
       .from('profiles')
       .select('address')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
+    const deliveryAddress = sanitizeDeliveryAddress(hostProfile?.address);
+    if (!deliveryAddress) {
+      return NextResponse.json(
+        { error: 'Add a delivery address to your profile before placing the group order.' },
+        { status: 400 }
+      );
+    }
 
     // Claim the group order first so it can only be finalized once.
     const { data: claimed } = await supabase
@@ -138,28 +146,36 @@ export async function POST(
         tax,
         discount: 0,
         total,
-        status: 'pending',
+        // Cash orders go straight to the kitchen (same as checkout).
+        status: 'confirmed',
         payment_status: 'pending',
         payment_method: 'cash',
-        delivery_address: (hostProfile?.address as any) || {
-          street: '',
-          city: '',
-          state: '',
-          zip_code: '',
-          coordinates: { lat: 0, lng: 0 },
-        },
+        delivery_address: deliveryAddress as any,
       } as any)
       .select()
       .single();
 
+    const undo = async () => {
+      if (order) {
+        await releaseOrderStock(order.id);
+        await serviceClient.from('orders').delete().eq('id', order.id);
+      }
+      await supabase.from('group_orders').update({ status: 'open' }).eq('id', id);
+    };
+
     if (orderError || !order || !(await createHandoverCode(order.id))) {
       console.error('Error creating order:', orderError);
-      if (order) await serviceClient.from('orders').delete().eq('id', order.id);
-      await supabase.from('group_orders').update({ status: 'open' }).eq('id', id);
+      await undo();
       return NextResponse.json(
         { error: 'Failed to create order' },
         { status: 500 }
       );
+    }
+
+    const reserved = await reserveOrderStock(order.id);
+    if (!reserved.ok) {
+      await undo();
+      return NextResponse.json({ error: 'Some items just sold out. Please update the group order.' }, { status: 409 });
     }
 
     // Send notifications to all participants

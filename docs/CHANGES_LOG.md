@@ -2,6 +2,26 @@
 
 This document maintains a dated, chronological record of all features, fixes, architectural plans, and code changes in the Rasan platform.
 
+### [2026-10-19] - Audit Fixes: Real Refunds, Checkout Integrity, Live Ops, Access Control, Honest Metrics
+
+- **Date & Time:** 2026-10-19 IST (local branch `fix/audit-2026-10-19`, not pushed)
+- **Objective:** Fix the critical / high findings of the 19 Oct roles-payments-routes audit.
+- **Deploy order:** run `supabase/migrations/008_audit_fixes.sql` in Supabase **before** deploying this code. Then set `CRON_SECRET` (and optionally `UPSTASH_REDIS_REST_URL/TOKEN`, `NEXT_PUBLIC_UPI_PAYEE_VPA`) in Vercel and add the `refund.processed` / `refund.failed` events to the Razorpay webhook.
+- **Changes:**
+  1. **Refunds are real** (`lib/payments/refunds.ts`): customer cancel, kitchen/admin cancel, admin refunds and stray captures call the Razorpay refund API, idempotent per reference, tracked in `refunds_ledger` + `orders.refunded_amount`; webhook handles `refund.processed/failed`. Fake in-memory refunds/settlements removed.
+  2. **Checkout**: one unpaid order reused on retry, Pay button can't double-submit, plan (subscription) created on the server with the order and activated on payment, honest success/failure messages, `payment.failed` handler, real first-delivery date.
+  3. **Webhook / verify**: event-id de-duplication, order lookup by notes, auto-refund of duplicate / mismatched / late captures, currency check, capture of "authorized" payments, config warnings.
+  4. **Stock & stale orders** (migration 008): atomic stock reservation, release on cancel/expiry; unpaid online orders expire after 30 min (sweep + `/api/cron/expire-orders`).
+  5. **Live Ops**: new `GET /api/admin/orders` and `GET /api/admin/delivery-partners`; real kitchens/riders/customers, real delay detection; reassign only to online verified riders, notifies the previous rider.
+  6. **Access**: suspended users are banned in Supabase Auth and blocked in the middleware; re-activation no longer auto-approves kitchens; safe login/register redirects; partners can't flip roles by re-applying; direct rider-row creation retired.
+  7. **Riders**: must be online (and verified) to accept, max 3 active deliveries, one location write per fix, rider pay kept in `orders.rider_fee`.
+  8. **Money & dashboards**: shared revenue rules (`lib/analytics/revenue.ts`), real commission split, real admin/vendor/rider metrics in IST, no fake ratings/KPIs, payouts settle/reject with a real UTR and balance restore.
+  9. **Other**: admin/rider profile save via `/api/profile`, waitlist API + table, group orders joinable and priced like checkout, local UPI QR with configured payee, `.env.example` updated.
+- **Status:** Completed (H13 "assigned / heading to kitchen" status deferred: needs a new order status).
+- **Verification / Testing:** `tsc --noEmit` 0 errors; `jest` 19 suites / 197 tests passing (new: refunds, payment webhook, audit rules); `next build` succeeded; ESLint 0 errors.
+
+---
+
 ### [2026-10-17] - Mobile UI/UX Polish: Drawer Close De-Duplication, Public Menu Browsing & Header Streamlining
 
 - **Date & Time:** 2026-10-17 05:15 IST

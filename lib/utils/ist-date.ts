@@ -73,3 +73,23 @@ export function weekdayOf(date: string): WeekdayName {
 export function istWeekday(now: Date = new Date()): WeekdayName {
   return weekdayOf(istToday(now));
 }
+
+/**
+ * Start instants (UTC ISO strings) of today, this week (Monday) and this month
+ * in India time. Server code runs in UTC on Vercel, so `new Date(y, m, d)`
+ * would start "today" at 05:30 IST.
+ */
+export function istPeriodStarts(now: Date = new Date()): { today: string; week: string; month: string } {
+  const today = istToday(now); // YYYY-MM-DD in IST
+  const [y, m, d] = today.split('-').map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
+  const daysSinceMonday = (weekday + 6) % 7;
+  // IST midnight = previous day 18:30 UTC.
+  const istMidnight = (yy: number, mm: number, dd: number) =>
+    new Date(Date.UTC(yy, mm, dd) - (5 * 60 + 30) * 60 * 1000).toISOString();
+  return {
+    today: istMidnight(y, m - 1, d),
+    week: istMidnight(y, m - 1, d - daysSinceMonday),
+    month: istMidnight(y, m - 1, 1),
+  };
+}

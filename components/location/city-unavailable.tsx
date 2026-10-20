@@ -3,6 +3,7 @@
 import { MapPin, Rocket, Bell } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
+import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
 
 interface CityUnavailableProps {
   /** City/area name detected from user GPS reverse-geocode */
@@ -21,13 +22,29 @@ interface CityUnavailableProps {
 export function CityUnavailable({ cityName, onBrowsePreview, onChangeLocation }: CityUnavailableProps) {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleNotify = (e: React.FormEvent) => {
+  const handleNotify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
-    // TODO: wire to a waitlist API / Supabase table
-    console.info('[CityUnavailable] Waitlist signup:', email);
-    setSubmitted(true);
+    if (!email.trim() || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      const stored = getStoredDeliveryLocation();
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), city: cityName || '', lat: stored?.lat, lng: stored?.lng }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not save your request');
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || 'Could not save your request');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -72,8 +89,13 @@ export function CityUnavailable({ cityName, onBrowsePreview, onChangeLocation }:
         {/* Waitlist form */}
         {!submitted ? (
           <form onSubmit={handleNotify} className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
+            <label htmlFor="waitlist-email" className="sr-only">
+              Email address
+            </label>
             <input
               id="waitlist-email"
+              aria-invalid={!!error}
+              aria-describedby={error ? 'waitlist-error' : undefined}
               type="email"
               required
               value={email}
@@ -83,14 +105,21 @@ export function CityUnavailable({ cityName, onBrowsePreview, onChangeLocation }:
             />
             <button
               type="submit"
-              className="h-12 px-6 bg-orange-600 hover:bg-orange-700 text-white text-sm font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-600/20 transition-all duration-300 flex items-center gap-2"
+              disabled={sending}
+              className="h-12 px-6 bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white text-sm font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-orange-600/20 transition-all duration-300 flex items-center gap-2"
             >
-              <Bell className="w-4 h-4" />
-              Notify Me
+              <Bell className="w-4 h-4" aria-hidden="true" />
+              {sending ? 'Saving…' : 'Notify Me'}
             </button>
           </form>
-        ) : (
-          <div className="inline-flex items-center gap-2 px-5 py-3 bg-green-50 border border-green-200 text-green-800 rounded-2xl text-sm font-bold">
+        ) : null}
+        {!submitted && error ? (
+          <p id="waitlist-error" role="alert" className="text-sm font-semibold text-red-600">
+            {error}
+          </p>
+        ) : null}
+        {submitted && (
+          <div role="status" className="inline-flex items-center gap-2 px-5 py-3 bg-green-50 border border-green-200 text-green-800 rounded-2xl text-sm font-bold">
             🎉 You&apos;re on the list! We&apos;ll notify you when Rasan reaches {cityName ?? 'your city'}.
           </div>
         )}

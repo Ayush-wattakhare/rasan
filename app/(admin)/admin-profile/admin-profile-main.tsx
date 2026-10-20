@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { ShieldCheck, User, Save, ShieldAlert, Fingerprint } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 
 export default function AdminProfileMain({ profile, userEmail }: any) {
   const [formData, setFormData] = useState({
@@ -17,7 +16,6 @@ export default function AdminProfileMain({ profile, userEmail }: any) {
 
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
-  const supabase = createClient();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -26,12 +24,14 @@ export default function AdminProfileMain({ profile, userEmail }: any) {
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ name: formData.name, phone: formData.phone })
-        .eq('id', profile.id);
-
-      if (error) throw error;
+      // Through the API: the browser may not write phone directly (migration 006).
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formData.name, phone: formData.phone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not update profile');
 
       toast({
         title: 'Clearance Updated',

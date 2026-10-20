@@ -7,6 +7,7 @@ import { RevenueChart } from '@/components/analytics/revenue-chart';
 import { OrdersChart } from '@/components/analytics/orders-chart';
 import { PopularMeals } from '@/components/analytics/popular-meals';
 import { PerformanceMetrics } from '@/components/analytics/performance-metrics';
+import { countsAsRevenue, netOrderValue, revenueSummary } from '@/lib/analytics/revenue';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,42 +46,48 @@ export default async function VendorAnalyticsPage() {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  const vendorName = vendor?.business_name || "Anita's Home Kitchen";
-  const vendorId = vendor?.id;
+  if (!vendor) {
+    redirect('/become-vendor');
+  }
+  const vendorName = vendor.business_name;
 
-  // Get orders
-  let query = serviceClient
+  const { data: rawOrders } = await serviceClient
     .from('orders')
     .select('*')
+    .eq('vendor_id', vendor.id)
     .order('created_at', { ascending: false });
 
-  if (vendorId) {
-    query = serviceClient
-      .from('orders')
-      .select('*')
-      .eq('vendor_id', vendorId)
-      .order('created_at', { ascending: false });
-  } else {
-    query = serviceClient
-      .from('orders')
-      .select('*')
-      .eq('id', '00000000-0000-0000-0000-000000000000');
-  }
+  // Only money that is real (shared rule with the admin dashboard): delivered,
+  // or paid and still active; cancelled / unpaid checkouts never count.
+  const orders = ((rawOrders || []) as any[]).filter(countsAsRevenue);
 
-  const { data: rawOrders } = await query;
-  const orders = rawOrders || [];
+  const summary = revenueSummary(orders);
+  const totalRevenue = summary.grossRevenue;
+  const totalOrders = summary.orders;
+  const averageOrderValue = Math.round(summary.averageOrderValue);
+  // A kitchen without reviews has no rating yet (shown as "New"), never a fake 5.0.
+  const averageRating = Number(vendor.rating) || 0;
 
-  // Calculate live statistics
-  const deliveredOrders = orders.filter((o) => o.status === 'delivered');
-  const paidOrders = orders.filter((o) => o.payment_status === 'paid' || o.status === 'delivered');
-  
-  const liveRevenue = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-  const liveOrderCount = orders.length;
-  
-  const totalRevenue = liveRevenue;
-  const totalOrders = liveOrderCount;
-  const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
-  const averageRating = Number(vendor?.rating) || 5.0;
+  // Real week-over-week change: last 7 days vs the 7 days before.
+  const DAY = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const inWindow = (from: number, to: number) =>
+    revenueSummary(orders.filter((o) => {
+      const t = Date.parse(o.created_at);
+      return t >= nowMs - from * DAY && t < nowMs - to * DAY;
+    }));
+  const thisWeek = inWindow(7, 0);
+  const lastWeek = inWindow(14, 7);
+  const change = (now: number, before: number) => {
+    if (before <= 0) return undefined; // no baseline: show no trend instead of a made-up one
+    const pct = Math.round(((now - before) / before) * 1000) / 10;
+    return { value: Math.abs(pct), isPositive: pct >= 0 };
+  };
+  const trends = {
+    revenue: change(thisWeek.grossRevenue, lastWeek.grossRevenue),
+    orders: change(thisWeek.orders, lastWeek.orders),
+    aov: change(thisWeek.averageOrderValue, lastWeek.averageOrderValue),
+  };
 
   // Prepare 7-day revenue & order trends initialized to 0
   const revenueByDate = new Map<string, number>();
@@ -98,10 +105,7 @@ export default async function VendorAnalyticsPage() {
     if (order.created_at) {
       const orderDate = format(new Date(order.created_at), 'MMM dd');
       if (revenueByDate.has(orderDate)) {
-        revenueByDate.set(
-          orderDate,
-          (revenueByDate.get(orderDate) || 0) + (order.total || 0)
-        );
+        revenueByDate.set(orderDate, (revenueByDate.get(orderDate) || 0) + netOrderValue(order));
         ordersByDate.set(
           orderDate,
           (ordersByDate.get(orderDate) || 0) + 1
@@ -167,7 +171,7 @@ export default async function VendorAnalyticsPage() {
                   <Activity className="w-3.5 h-3.5 text-green-400" /> TELEMETRY: 30-DAY WINDOW
                 </p>
                 <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[0.65rem] flex items-center gap-2">
-                  <Award className="w-3.5 h-3.5 text-orange-500" /> RATING: {averageRating.toFixed(1)} / 5.0
+                  <Award className="w-3.5 h-3.5 text-orange-500" /> RATING: {averageRating > 0 ? `${averageRating.toFixed(1)} / 5.0` : 'NEW'}
                 </p>
               </div>
             </div>
@@ -185,7 +189,7 @@ export default async function VendorAnalyticsPage() {
                 {vendorName}
               </div>
               <div className="text-[0.6rem] text-gray-400 font-medium">
-                Hyperlocal Cloud Kitchen #1
+                Home kitchen partner
               </div>
             </div>
           </div>
@@ -199,30 +203,29 @@ export default async function VendorAnalyticsPage() {
           <StatsCard
             title="Total Revenue"
             value={`₹${totalRevenue.toLocaleString('en-IN')}`}
-            description="Last 30-day cumulative"
+            description="Paid & delivered, net of refunds"
             icon={DollarSign}
-            trend={{ value: 18.4, isPositive: true }}
+            trend={trends.revenue}
           />
           <StatsCard
             title="Orders Processed"
             value={totalOrders}
-            description="Delivered & active"
+            description="Paid or delivered"
             icon={Package}
-            trend={{ value: 12.2, isPositive: true }}
+            trend={trends.orders}
           />
           <StatsCard
             title="Average Order Value"
             value={`₹${averageOrderValue.toFixed(0)}`}
-            description="Per customer ticket"
+            description="Per paid order"
             icon={TrendingUp}
-            trend={{ value: 6.5, isPositive: true }}
+            trend={trends.aov}
           />
           <StatsCard
             title="Customer Satisfaction"
-            value={`${averageRating.toFixed(1)} ★`}
-            description="From 96+ home reviews"
+            value={averageRating > 0 ? `${averageRating.toFixed(1)} ★` : 'New'}
+            description={averageRating > 0 ? 'Average of customer reviews' : 'No reviews yet'}
             icon={Star}
-            trend={{ value: 4.8, isPositive: true }}
           />
         </div>
 

@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { AudioOrderAlert } from '@/components/vendor/audio-order-alert';
+import { countsAsRevenue, netOrderValue } from '@/lib/analytics/revenue';
 
 export default function VendorDashboardPage() {
   const { toast } = useToast();
@@ -29,7 +30,7 @@ export default function VendorDashboardPage() {
   const [stats, setStats] = useState({
     totalOrders: 0,
     totalRevenue: 0,
-    averageRating: 4.9,
+    averageRating: 0,
     pendingOrders: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -62,9 +63,10 @@ export default function VendorDashboardPage() {
         setOrders(list.slice(0, 8));
 
         const totalOrders = list.length;
-        const totalRevenue = list
-          .filter((o) => o.payment_status === 'paid')
-          .reduce((sum, o) => sum + (o.total || 0), 0);
+        // Same rule as analytics/admin: real money only, cancelled orders and refunds excluded.
+        const totalRevenue = (list as any[])
+          .filter(countsAsRevenue)
+          .reduce((sum, o) => sum + netOrderValue(o), 0);
         const pendingOrders = list.filter(
           (o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing'
         ).length;
@@ -72,7 +74,7 @@ export default function VendorDashboardPage() {
         setStats({
           totalOrders,
           totalRevenue,
-          averageRating: Number(vendor.rating) || 5.0,
+          averageRating: Number(vendor.rating) || 0,
           pendingOrders,
         });
       } catch (orderError) {
@@ -80,7 +82,7 @@ export default function VendorDashboardPage() {
         setStats({
           totalOrders: 0,
           totalRevenue: 0,
-          averageRating: Number(vendor.rating) || 5.0,
+          averageRating: Number(vendor.rating) || 0,
           pendingOrders: 0,
         });
       }
@@ -220,7 +222,7 @@ export default function VendorDashboardPage() {
                     VERIFIED HOME CHEF
                   </div>
                   <div className="text-lg font-black tracking-tight text-white uppercase italic">
-                    {vendorData?.business_name || "Anita's Home Kitchen"}
+                    {vendorData?.business_name || 'Your Kitchen'}
                   </div>
                   <div className="flex items-center gap-1.5 text-[0.6rem] font-bold tracking-wider text-gray-400 uppercase">
                     <ShieldCheck className="h-3.5 w-3.5 text-orange-400" /> ID:{' '}

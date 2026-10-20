@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { safeRedirectPath } from '@/lib/utils/safe-redirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,13 +41,10 @@ function LoginFormContent() {
 
     const role = profile?.role || 'customer';
 
-    if (
-      role === 'customer' &&
-      redirectTo &&
-      redirectTo.startsWith('/') &&
-      !redirectTo.startsWith('//')
-    ) {
-      router.push(redirectTo);
+    // Same-origin paths only ("/\\evil.com" and similar tricks are rejected).
+    const safeTarget = safeRedirectPath(redirectTo, '');
+    if (role === 'customer' && safeTarget) {
+      router.push(safeTarget);
       router.refresh();
       return;
     }

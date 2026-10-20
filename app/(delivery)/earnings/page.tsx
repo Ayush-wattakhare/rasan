@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { IndianRupee } from 'lucide-react';
 import { EarningsClient } from '@/components/delivery/earnings-client';
+import { istPeriodStarts } from '@/lib/utils/ist-date';
 
 export const metadata = {
   title: 'Earnings & Payouts | Rasan Delivery',
@@ -25,20 +26,21 @@ export default async function EarningsPage() {
   const { data: partner } = await supabase.from('delivery_partners').select('*').eq('user_id', user.id).single();
   if (!partner) redirect('/delivery-dashboard');
 
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  // Periods in India time (the server runs in UTC), by delivery time.
+  const periods = istPeriodStarts();
+  // What the rider was actually credited: rider_fee (migration 008), else delivery_fee.
+  const earned = (o: any) => Number(o.rider_fee ?? o.delivery_fee) || 0;
 
-  const [allDeliveries, todayD, weekD, monthD] = await Promise.all([
-    supabase
-      .from('orders')
+  const [recentDeliveries, periodRows, lifetime] = await Promise.all([
+    (supabase.from('orders') as any)
       .select(`
         id,
         order_number,
         total,
         delivery_fee,
+        rider_fee,
         created_at,
+        actual_delivery_time,
         delivery_address,
         vendors:vendor_id (
           id,
@@ -48,29 +50,38 @@ export default async function EarningsPage() {
       `)
       .eq('delivery_partner_id', partner.id)
       .eq('status', 'delivered')
-      .order('created_at', { ascending: false })
+      .order('actual_delivery_time', { ascending: false })
       .limit(50),
-    supabase.from('orders').select('delivery_fee').eq('delivery_partner_id', partner.id).eq('status', 'delivered').gte('created_at', todayStart),
-    supabase.from('orders').select('delivery_fee').eq('delivery_partner_id', partner.id).eq('status', 'delivered').gte('created_at', weekStart),
-    supabase.from('orders').select('delivery_fee').eq('delivery_partner_id', partner.id).eq('status', 'delivered').gte('created_at', monthStart),
+    (supabase.from('orders') as any)
+      .select('delivery_fee, rider_fee, actual_delivery_time')
+      .eq('delivery_partner_id', partner.id)
+      .eq('status', 'delivered')
+      .gte('actual_delivery_time', periods.month < periods.week ? periods.month : periods.week),
+    // All-time totals from the IST earnings view (not just the last 50 rows).
+    (supabase.from('delivery_partner_earnings_v' as any) as any)
+      .select('lifetime, deliveries')
+      .eq('delivery_partner_id', partner.id)
+      .maybeSingle(),
   ]);
 
-  const sum = (orders: any[] | null) => ({
-    amount: (orders || []).reduce((s, o) => s + Math.max(Number(o.delivery_fee) || 0, 35), 0),
-    count: (orders || []).length,
-  });
+  const rows: any[] = periodRows.data || [];
+  const sum = (since: string) => {
+    const inPeriod = rows.filter((o) => o.actual_delivery_time && o.actual_delivery_time >= since);
+    return { amount: inPeriod.reduce((s, o) => s + earned(o), 0), count: inPeriod.length };
+  };
+  const recent: any[] = recentDeliveries.data || [];
+  const allTime = lifetime.data
+    ? { amount: Number(lifetime.data.lifetime) || 0, count: Number(lifetime.data.deliveries) || 0 }
+    : { amount: recent.reduce((s, o) => s + earned(o), 0), count: recent.length };
 
   const stats = [
-    { label: 'Today', ...sum(todayD.data) },
-    { label: 'This Week', ...sum(weekD.data) },
-    { label: 'This Month', ...sum(monthD.data) },
-    { label: 'All Time', ...sum(allDeliveries.data) },
+    { label: 'Today', ...sum(periods.today) },
+    { label: 'This Week', ...sum(periods.week) },
+    { label: 'This Month', ...sum(periods.month) },
+    { label: 'All Time', ...allTime },
   ];
 
-  const mappedDeliveries = (allDeliveries.data || []).map((d) => ({
-    ...d,
-    delivery_fee: Math.max(Number(d.delivery_fee) || 0, 35),
-  }));
+  const mappedDeliveries = recent.map((d) => ({ ...d, delivery_fee: earned(d) }));
 
   return (
     <div className="min-h-screen bg-[#FAFAF9] pb-32">
@@ -85,7 +96,7 @@ export default async function EarningsPage() {
             MY <span className="text-orange-600">EARNINGS & PAYOUTS</span>
           </h1>
           <p className="text-gray-500 font-bold uppercase tracking-widest text-[0.65rem]">
-            Total deliveries completed: {sum(allDeliveries.data).count} • Instant Cashout Enabled
+            Total deliveries completed: {allTime.count}
           </p>
         </div>
       </section>

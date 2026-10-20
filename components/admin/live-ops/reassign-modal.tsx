@@ -4,15 +4,14 @@ import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/lib/hooks/use-toast';
-import { Truck, Star, ArrowRight, Loader2, Sparkles, User, AlertCircle } from 'lucide-react';
+import { Truck, Star, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 
 interface ReassignModalProps {
   order: any | null;
@@ -21,32 +20,49 @@ interface ReassignModalProps {
   onReassigned: () => void;
 }
 
+type Rider = {
+  id: string;
+  name: string;
+  phone: string | null;
+  vehicle: string | null;
+  rating: number | null;
+  is_online: boolean;
+  active_missions: number;
+};
+
 export function ReassignModal({ order, isOpen, onClose, onReassigned }: ReassignModalProps) {
   const { toast } = useToast();
-  const [riders, setRiders] = useState<any[]>([]);
-  const [selectedRiderId, setSelectedRiderId] = useState<string>('');
-  const [reason, setReason] = useState('Rider vehicle issue / Delay transfer');
+  const [riders, setRiders] = useState<Rider[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [selectedRiderId, setSelectedRiderId] = useState<string>('');
+  const [reason, setReason] = useState('Rider unresponsive / delayed');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
     setLoading(true);
-    fetch('/api/admin/users')
-      .then(res => res.json())
-      .then(data => {
-        // Fallback sample riders if API returns standard list
-        const sampleRiders = [
-          { id: 'dp-1', name: 'Rohan Sharma', phone: '+91 9988776655', vehicle: 'MH 14 DA 2024', rating: 4.9, active_missions: 0 },
-          { id: 'dp-2', name: 'Riya Patel', phone: '+91 9776655443', vehicle: 'MH 12 AB 1234', rating: 4.8, active_missions: 1 },
-          { id: 'dp-3', name: 'Amit Verma', phone: '+91 9833445566', vehicle: 'MH 14 CZ 9801', rating: 4.7, active_missions: 0 },
-        ];
-        setRiders(sampleRiders);
-        setSelectedRiderId(sampleRiders[0].id);
+    setLoadError('');
+    setSelectedRiderId('');
+    fetch('/api/admin/delivery-partners?online=1')
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load riders');
+        if (cancelled) return;
+        // Least busy first; never offer the rider who already has the order.
+        const list: Rider[] = (data.riders || [])
+          .filter((r: Rider) => r.id !== order?.delivery_partner_id)
+          .sort((a: Rider, b: Rider) => a.active_missions - b.active_missions);
+        setRiders(list);
+        if (list[0]) setSelectedRiderId(list[0].id);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [isOpen]);
+      .catch((err) => !cancelled && setLoadError(err.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, order?.delivery_partner_id]);
 
   if (!order) return null;
 
@@ -61,21 +77,13 @@ export function ReassignModal({ order, isOpen, onClose, onReassigned }: Reassign
       const res = await fetch('/api/admin/live-ops/reassign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          targetRiderId: selectedRiderId,
-          reason,
-        }),
+        body: JSON.stringify({ orderId: order.id, targetRiderId: selectedRiderId, reason }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to reassign rider');
 
-      toast({
-        title: '🛵 Mission Reassigned',
-        description: data.message || `Mission transferred to target pilot.`,
-      });
-
+      toast({ title: '🛵 Rider Assigned', description: data.message });
       onReassigned();
       onClose();
     } catch (err: any) {
@@ -96,101 +104,113 @@ export function ReassignModal({ order, isOpen, onClose, onReassigned }: Reassign
           <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/20 rounded-full blur-[60px] -mr-16 -mt-16 pointer-events-none" />
           <div className="relative z-10 space-y-1 pr-10">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 text-blue-400 text-[0.6rem] font-black uppercase tracking-wider">
-              <Sparkles className="w-3 h-3" /> Tactical Dispatch Intervention
+              <Sparkles className="w-3 h-3" aria-hidden="true" /> Dispatch
             </div>
             <DialogTitle className="text-xl sm:text-2xl font-black uppercase italic tracking-tight text-white leading-tight">
-              Reassign <span className="text-blue-500">Mission #{order.id?.slice(0, 8).toUpperCase()}</span>
+              {order.delivery_partner_id ? 'Reassign' : 'Assign'}{' '}
+              <span className="text-blue-500">#{order.order_number || order.id?.slice(0, 8).toUpperCase()}</span>
             </DialogTitle>
             <DialogDescription className="text-gray-400 text-xs font-semibold">
-              Force transfer active delivery sortie to a nearby available pilot
+              Choose an online, verified rider. The customer and both riders are notified.
             </DialogDescription>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
-          {/* Active Order Summary */}
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-2 text-xs">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-4">
               <span className="text-gray-500">Destination:</span>
-              <span className="font-bold text-gray-900">{typeof order.delivery_address === 'string' ? order.delivery_address : order.delivery_address?.street || 'Local Drop'}</span>
+              <span className="font-bold text-gray-900 text-right">
+                {typeof order.delivery_address === 'string' ? order.delivery_address : order.delivery_address?.street || '—'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Order Total:</span>
-              <span className="font-black text-green-600">₹{order.total || 180}</span>
+              <span className="font-black text-green-600">₹{order.total}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Current Rider:</span>
+              <span className="font-bold text-gray-900">{order.rider_name || 'None'}</span>
             </div>
           </div>
 
-          {/* Reason Input */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-gray-700">Reason for Reassignment *</Label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Previous rider scooter breakdown / Unreachable"
-              className="h-11 rounded-xl text-xs font-medium"
-            />
-          </div>
-
-          {/* Rider Selection List */}
-          <div className="space-y-2.5">
-            <Label className="text-xs font-black uppercase tracking-wider text-gray-700">
-              Select Online Pilot to Assign
-            </Label>
-
-            <div className="space-y-2">
-              {riders.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setSelectedRiderId(r.id)}
-                  className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between cursor-pointer ${
-                    selectedRiderId === r.id
-                      ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-200'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black">
-                      <Truck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-gray-900">{r.name}</div>
-                      <div className="text-[0.65rem] text-gray-500 font-bold uppercase font-mono">
-                        {r.vehicle} • {r.phone}
+          <div className="space-y-3">
+            <Label className="text-xs font-black uppercase tracking-wider text-gray-700">Online Riders</Label>
+            {loading ? (
+              <div className="flex items-center justify-center p-6">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" aria-label="Loading riders" />
+              </div>
+            ) : loadError ? (
+              <p role="alert" className="text-xs font-semibold text-red-600">{loadError}</p>
+            ) : riders.length === 0 ? (
+              <p className="text-xs font-semibold text-gray-500 p-4 bg-gray-50 rounded-2xl">
+                No other verified rider is online right now.
+              </p>
+            ) : (
+              <div className="grid gap-2.5" role="radiogroup" aria-label="Riders">
+                {riders.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedRiderId === r.id}
+                    onClick={() => setSelectedRiderId(r.id)}
+                    className={`p-4 rounded-2xl border text-left transition flex items-center justify-between ${
+                      selectedRiderId === r.id
+                        ? 'border-blue-600 bg-blue-50/50 shadow-md ring-2 ring-blue-600/20'
+                        : 'border-gray-200 hover:border-blue-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                        <Truck className="w-5 h-5" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-gray-900">{r.name}</div>
+                        <div className="text-[0.65rem] text-gray-500 font-mono">
+                          {[r.vehicle, r.phone].filter(Boolean).join(' • ') || '—'}
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="flex items-center gap-1 text-xs font-black text-amber-500 justify-end">
-                      <Star className="w-3.5 h-3.5 fill-current" /> {r.rating}
+                    <div className="text-right space-y-1">
+                      {r.rating !== null && r.rating > 0 && (
+                        <span className="flex items-center justify-end gap-1 text-xs font-bold text-amber-500">
+                          <Star className="w-3.5 h-3.5 fill-amber-500" aria-hidden="true" /> {r.rating.toFixed(1)}
+                        </span>
+                      )}
+                      <span className="text-[0.6rem] font-bold uppercase text-gray-400 block">
+                        {r.active_missions === 0 ? 'Free' : `${r.active_missions} active`}
+                      </span>
                     </div>
-                    <span className="text-[0.6rem] font-bold text-green-600 uppercase">
-                      {r.active_missions === 0 ? '● Free (0 Missions)' : `${r.active_missions} Active`}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="reassign-reason" className="text-xs font-black uppercase tracking-wider text-gray-700">
+              Reason
+            </Label>
+            <Textarea
+              id="reassign-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="rounded-xl text-xs min-h-[70px]"
+            />
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 border-t border-gray-100 bg-white shrink-0 flex gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            className="h-12 px-6 rounded-xl border-gray-200 text-xs font-bold uppercase"
-          >
+        <div className="p-4 sm:p-6 border-t border-gray-100 bg-white flex gap-3 shrink-0">
+          <Button variant="outline" onClick={onClose} className="flex-1 h-12 rounded-xl text-xs font-bold uppercase">
             Cancel
           </Button>
           <Button
-            type="button"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !selectedRiderId}
             onClick={handleReassign}
-            className="flex-1 h-12 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-wider rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+            className="flex-1 h-12 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2"
           >
-            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Transfer Mission <ArrowRight className="w-4 h-4" /></>}
+            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (<>Confirm <ArrowRight className="w-4 h-4" aria-hidden="true" /></>)}
           </Button>
         </div>
       </DialogContent>

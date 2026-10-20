@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Razorpay from 'razorpay';
 import Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
 import { PAYABLE_PAYMENT_STATUSES, loadPayableOrder, toMinorUnits } from '@/lib/payments/order-payment';
-
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
-
-const razorpay = razorpayKeyId && razorpayKeySecret
-  ? new Razorpay({
-      key_id: razorpayKeyId,
-      key_secret: razorpayKeySecret,
-    })
-  : null;
+import { getRazorpay, warnRazorpayConfigOnce } from '@/lib/payments/razorpay-client';
+import { rateLimit } from '@/lib/utils/rate-limit';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -64,8 +55,10 @@ export async function POST(request: NextRequest) {
     };
 
     if (provider === 'razorpay') {
+      const razorpay = getRazorpay();
       if (!razorpay) {
-        return NextResponse.json({ error: 'Razorpay not configured' }, { status: 500 });
+        warnRazorpayConfigOnce();
+        return NextResponse.json({ error: 'Online payment is not available right now' }, { status: 503 });
       }
 
       // Reuse the gateway order already bound to this order while it is still open:

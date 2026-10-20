@@ -1,174 +1,282 @@
+import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
 import { createServiceClient } from '@/lib/supabase/server';
+import { isUuid } from '@/lib/utils/validation-ids';
+import { refundOrderPayment, refundStrayPayment } from '@/lib/payments/refunds';
+import { toMinorUnits } from '@/lib/payments/order-payment';
+import { PARTNER_PAYOUT_TYPES, type RefundRecord, type RefundType } from '@/lib/payments/refund-types';
 
-export interface RefundRecord {
-  id: string;
-  reference_id: string;
-  order_id: string;
-  order_number?: string;
-  recipient_id: string;
-  recipient_role: 'customer' | 'vendor' | 'delivery';
-  recipient_name: string;
-  amount: number;
-  type: 'customer_refund' | 'vendor_compensation' | 'rider_waiting_fee' | 'goodwill_credit';
-  reason: string;
-  status: 'processed' | 'pending' | 'failed';
-  gateway: 'upi' | 'razorpay' | 'wallet' | 'bank_transfer';
-  processed_at: string;
-}
+const MAX_PARTNER_PAYMENT = 10000;
+const REF_PATTERN = /^[A-Za-z0-9-]{8,80}$/;
 
-const MEMORY_REFUNDS: RefundRecord[] = [
-  {
-    id: 'ref-1',
-    reference_id: 'REF-20260901-8411',
-    order_id: 'ORD-7518',
-    recipient_id: 'cust-1',
-    recipient_role: 'customer',
-    recipient_name: 'Avatta Khare',
-    amount: 50,
-    type: 'customer_refund',
-    reason: 'Missing item in order (Sweet Dish)',
-    status: 'processed',
-    gateway: 'upi',
-    processed_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'ref-2',
-    reference_id: 'REF-20260901-8412',
-    order_id: 'ORD-8921',
-    recipient_id: 'del-1',
-    recipient_role: 'delivery',
-    recipient_name: 'Rohan Sharma',
-    amount: 35,
-    type: 'rider_waiting_fee',
-    reason: 'Kitchen delay compensation (>18 mins waiting)',
-    status: 'processed',
-    gateway: 'wallet',
-    processed_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'ref-3',
-    reference_id: 'REF-20260901-8413',
-    order_id: 'ORD-6219',
-    recipient_id: 'vend-1',
-    recipient_role: 'vendor',
-    recipient_name: "Anita's Kitchen",
-    amount: 140,
-    type: 'vendor_compensation',
-    reason: 'Customer cancellation after meal preparation (70% food cost)',
-    status: 'processed',
-    gateway: 'bank_transfer',
-    processed_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  }
-];
-
+/** Refunds & compensation ledger (database only). */
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
-  try {
-    const serviceClient = createServiceClient();
-    const { data: dbRefunds } = await (serviceClient.from('refunds_ledger' as any) as any)
-      .select('*')
-      .order('processed_at', { ascending: false });
+  const { data, error } = await (createServiceClient().from('refunds_ledger' as any) as any)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(500);
 
-    const refunds: RefundRecord[] = (dbRefunds && dbRefunds.length > 0)
-      ? (dbRefunds as unknown as RefundRecord[])
-      : MEMORY_REFUNDS;
-
-    const totalRefunded = refunds.reduce((sum, r) => sum + Number(r.amount), 0);
-
-    return NextResponse.json({
-      success: true,
-      refunds,
-      totalRefunded,
-      totalCount: refunds.length,
-      source: (dbRefunds && dbRefunds.length > 0) ? 'database' : 'fallback',
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  if (error) {
+    console.error('Refunds ledger fetch failed:', error);
+    return NextResponse.json({ error: 'Could not load the refunds ledger' }, { status: 500 });
   }
+
+  const refunds = ((data || []) as RefundRecord[]).map((r) => ({ ...r, amount: Number(r.amount) }));
+  const sum = (rows: RefundRecord[]) => rows.reduce((s, r) => s + Number(r.amount), 0);
+  const processed = refunds.filter((r) => r.status === 'processed');
+
+  return NextResponse.json({
+    success: true,
+    refunds,
+    totalRefunded: sum(processed),
+    customerRefunded: sum(processed.filter((r) => r.type === 'customer_refund')),
+    partnerPaid: sum(processed.filter((r) => r.type !== 'customer_refund')),
+    needsAttention: refunds.filter((r) => r.status !== 'processed').length,
+    totalCount: refunds.length,
+  });
 }
 
+/** Finds an order by UUID or by order number (what admins see on screen). */
+async function findOrder(ref: string) {
+  const value = ref.trim();
+  const column = isUuid(value) ? 'id' : 'order_number';
+  const { data } = await createServiceClient()
+    .from('orders')
+    .select('id, order_number, customer_id')
+    .eq(column, column === 'id' ? value : value.toUpperCase())
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * Customer refunds go back through Razorpay to the original payment.
+ * Partner compensation (vendor / rider / goodwill) is recorded as 'pending'
+ * until finance pays it and marks it processed (PATCH).
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { orderId, recipientId, recipientRole, recipientName, amount, type, reason, gateway } = body;
+    const type = body?.type as RefundType;
+    const amount = Number(body?.amount);
+    const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
+    // One key per form submission: a double click or retry can't refund twice.
+    const key = typeof body?.idempotencyKey === 'string' && REF_PATTERN.test(body.idempotencyKey)
+      ? body.idempotencyKey
+      : randomUUID();
 
-    if (!amount || Number(amount) <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: 'Valid amount is required' }, { status: 400 });
     }
-
-    const referenceId = `REF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const newRefund: RefundRecord = {
-      id: `ref-${Date.now()}`,
-      reference_id: referenceId,
-      order_id: orderId || 'N/A',
-      recipient_id: recipientId || 'guest',
-      recipient_role: recipientRole || 'customer',
-      recipient_name: recipientName || 'Beneficiary',
-      amount: Number(amount),
-      type: type || 'customer_refund',
-      reason: reason || 'Admin initiated settlement',
-      status: 'processed',
-      gateway: gateway || 'upi',
-      processed_at: new Date().toISOString(),
-    };
-
-    // Attempt persistent database insertion
-    const serviceClient = createServiceClient();
-    try {
-      const { data: inserted, error: insertError } = await (serviceClient.from('refunds_ledger' as any) as any)
-        .insert({
-          reference_id: referenceId,
-          order_id: orderId && orderId.length > 10 ? orderId : null,
-          order_number: orderId || null,
-          recipient_id: recipientId && recipientId.length > 10 ? recipientId : null,
-          recipient_role: newRefund.recipient_role,
-          recipient_name: newRefund.recipient_name,
-          amount: newRefund.amount,
-          type: newRefund.type,
-          reason: newRefund.reason,
-          status: 'processed',
-          gateway: newRefund.gateway,
-          processed_at: newRefund.processed_at,
-        })
-        .select()
-        .maybeSingle();
-
-      if (inserted && !insertError) {
-        newRefund.id = (inserted as any).id;
-      }
-    } catch {
-      // In-memory array fallback
+    if (!reason) {
+      return NextResponse.json({ error: 'A reason is required' }, { status: 400 });
     }
 
-    MEMORY_REFUNDS.unshift(newRefund);
+    if (type === 'customer_refund') {
+      const orderRef = typeof body?.orderId === 'string' ? body.orderId.trim() : '';
+      if (!orderRef) {
+        return NextResponse.json({ error: 'Customer refunds need the order ID or order number' }, { status: 400 });
+      }
+      const order = await findOrder(orderRef);
+      if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
-    // Push notification to recipient
-    try {
-      if (recipientId && recipientId.length > 10) {
-        await (serviceClient.from('notifications') as any).insert({
-          user_id: recipientId,
+      const outcome = await refundOrderPayment({
+        orderId: order.id,
+        amount,
+        reason: `Admin refund: ${reason}`,
+        referenceId: `ADMIN-${key}`,
+      });
+
+      if (!outcome.ok) {
+        const status = outcome.reason === 'not-paid' || outcome.reason === 'nothing-left' ? 409 : outcome.queued ? 202 : 502;
+        return NextResponse.json(
+          { success: outcome.queued === true, queued: outcome.queued === true, error: outcome.message },
+          { status }
+        );
+      }
+
+      if (!outcome.alreadyRequested && order.customer_id) {
+        await createServiceClient().from('notifications').insert({
+          user_id: order.customer_id,
           type: 'payment',
-          title: `💰 ₹${amount} Settlement Credited`,
-          message: `A settlement of ₹${amount} has been processed via ${newRefund.gateway.toUpperCase()}. Reason: ${reason}.`,
+          title: 'Refund Initiated',
+          message: `A refund of ₹${outcome.amount.toFixed(2)} for order #${order.order_number} has been sent to your original payment method. It usually arrives in 5–7 working days.`,
           is_read: false,
         });
       }
-    } catch {}
+
+      return NextResponse.json({
+        success: true,
+        refund: outcome,
+        message: outcome.alreadyRequested
+          ? 'This refund was already requested.'
+          : `Refund of ₹${outcome.amount.toFixed(2)} sent to Razorpay (${outcome.status}).`,
+      });
+    }
+
+    if (!PARTNER_PAYOUT_TYPES.includes(type)) {
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+    }
+    if (amount > MAX_PARTNER_PAYMENT) {
+      return NextResponse.json({ error: `Amount cannot exceed ₹${MAX_PARTNER_PAYMENT}` }, { status: 400 });
+    }
+    if (!isUuid(body?.recipientId)) {
+      return NextResponse.json({ error: 'Select the partner to compensate' }, { status: 400 });
+    }
+
+    const db = createServiceClient();
+    const { data: recipient } = await db
+      .from('profiles')
+      .select('id, name, role')
+      .eq('id', body.recipientId)
+      .maybeSingle();
+    if (!recipient) return NextResponse.json({ error: 'Recipient not found' }, { status: 404 });
+    const role = recipient.role === 'vendor' || recipient.role === 'delivery' ? recipient.role : 'customer';
+
+    const order = typeof body?.orderId === 'string' && body.orderId.trim() ? await findOrder(body.orderId) : null;
+
+    const { data: row, error } = await (db.from('refunds_ledger' as any) as any)
+      .insert({
+        reference_id: `COMP-${key}`,
+        order_id: order?.id ?? null,
+        order_number: order?.order_number ?? null,
+        recipient_id: recipient.id,
+        recipient_role: role,
+        recipient_name: recipient.name || 'Partner',
+        amount: Math.round(amount * 100) / 100,
+        type,
+        reason,
+        status: 'pending',
+        gateway: body?.gateway === 'upi' ? 'upi' : 'bank_transfer',
+        processed_at: null,
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ success: true, message: 'This payment was already recorded.' });
+      }
+      console.error('Compensation insert failed:', error);
+      return NextResponse.json({ error: 'Could not record the payment' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
-      refund: newRefund,
-      message: `₹${amount} ${type?.replace(/_/g, ' ') || 'refund'} processed successfully.`,
+      refund: row,
+      message: `₹${amount} recorded as pending. Mark it processed once it has been paid.`,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    console.error('Admin refunds POST error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+/**
+ * PATCH { referenceId, action }
+ *  - 'retry': re-sends a failed customer refund to Razorpay.
+ *  - 'mark_processed': a pending manual payment was paid outside the gateway
+ *    (needs the bank / UPI reference).
+ */
+export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const body = await request.json().catch(() => ({}));
+  const referenceId = typeof body?.referenceId === 'string' ? body.referenceId : '';
+  if (!REF_PATTERN.test(referenceId)) {
+    return NextResponse.json({ error: 'Invalid reference' }, { status: 400 });
+  }
+
+  const db = createServiceClient();
+  const { data: row } = await (db.from('refunds_ledger' as any) as any)
+    .select('*')
+    .eq('reference_id', referenceId)
+    .maybeSingle();
+  if (!row) return NextResponse.json({ error: 'Ledger entry not found' }, { status: 404 });
+
+  if (body?.action === 'retry') {
+    if (row.type !== 'customer_refund' || row.status !== 'failed') {
+      return NextResponse.json({ error: 'Only failed customer refunds can be retried' }, { status: 409 });
+    }
+    // A stray capture is refunded on its own payment id, never on the order's real payment.
+    if (String(row.reference_id).startsWith('AUTO-') && row.payment_id) {
+      const stray = await refundStrayPayment({
+        paymentId: row.payment_id,
+        amountMinor: toMinorUnits(Number(row.amount)),
+        order: row.order_id ? { id: row.order_id, order_number: row.order_number, customer_id: row.recipient_id } : null,
+        reason: row.reason,
+      });
+      if (!stray.ok) return NextResponse.json({ error: stray.message }, { status: 502 });
+      return NextResponse.json({ success: true, message: stray.message });
+    }
+    if (!row.order_id) {
+      return NextResponse.json({ error: 'This refund has no order to refund against' }, { status: 409 });
+    }
+    const outcome = await refundOrderPayment({
+      orderId: row.order_id,
+      amount: Number(row.amount),
+      reason: row.reason,
+      referenceId,
+    });
+    if (!outcome.ok) return NextResponse.json({ error: outcome.message }, { status: 502 });
+    return NextResponse.json({ success: true, message: `Refund re-sent (${outcome.status}).` });
+  }
+
+  if (body?.action === 'mark_processed') {
+    const utr = typeof body?.utr === 'string' ? body.utr.trim() : '';
+    if (utr.length < 6) {
+      return NextResponse.json({ error: 'Enter the bank / UPI reference (UTR)' }, { status: 400 });
+    }
+    // A customer refund already handed to Razorpay is completed by its webhook, not by hand.
+    if (row.gateway_refund_id) {
+      return NextResponse.json({ error: 'This refund is tracked by Razorpay' }, { status: 409 });
+    }
+    const { data: updated } = await (db.from('refunds_ledger' as any) as any)
+      .update({
+        status: 'processed',
+        processed_at: new Date().toISOString(),
+        reason: `${row.reason} · Paid manually (ref ${utr.slice(0, 40)})`.slice(0, 500),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('reference_id', referenceId)
+      .in('status', ['pending', 'failed'])
+      .select('id')
+      .maybeSingle();
+    if (!updated) return NextResponse.json({ error: 'Entry is already processed' }, { status: 409 });
+
+    // A customer refund paid by hand still counts against the order.
+    // (Stray captures, AUTO-*, were never part of the order total.)
+    if (row.type === 'customer_refund' && row.order_id && !String(row.reference_id).startsWith('AUTO-')) {
+      const { data: order } = await (db.from('orders') as any)
+        .select('total, refunded_amount')
+        .eq('id', row.order_id)
+        .maybeSingle();
+      if (order) {
+        const after = Math.min(Number((order as any).refunded_amount || 0) + Number(row.amount), Number(order.total));
+        await (db.from('orders') as any)
+          .update({ refunded_amount: after, ...(after >= Number(order.total) ? { payment_status: 'refunded' } : {}) })
+          .eq('id', row.order_id);
+      }
+    }
+
+    if (row.recipient_id) {
+      await db.from('notifications').insert({
+        user_id: row.recipient_id,
+        type: 'payment',
+        title: row.type === 'customer_refund' ? 'Refund Sent' : 'Payment Sent',
+        message: `₹${Number(row.amount).toFixed(2)} has been sent to you (reference ${utr.slice(0, 40)}).`,
+        is_read: false,
+      });
+    }
+    return NextResponse.json({ success: true, message: 'Marked as processed.' });
+  }
+
+  return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
 }

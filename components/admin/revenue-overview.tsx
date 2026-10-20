@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatCurrency } from '@/lib/utils/format';
 import { Landmark, Sparkles, ChefHat, Truck, ArrowUpRight } from 'lucide-react';
 import { RASAN_COMMISSION_RATE, VENDOR_PAYOUT_RATE, RASAN_COMMISSION_PERCENTAGE } from '@/lib/utils/constants';
+import { countsAsRevenue, netOrderValue } from '@/lib/analytics/revenue';
 
 interface RevenueData {
   date: string;
@@ -22,33 +23,23 @@ export default function RevenueOverview() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('created_at, total')
-        .gte('created_at', thirtyDaysAgo.toISOString());
+      const { data: orders } = await (supabase.from('orders') as any)
+        .select('created_at, total, subtotal, refunded_amount, status, payment_status')
+        .gte('created_at', thirtyDaysAgo.toISOString())
+        .order('created_at', { ascending: true });
 
-      if (orders && orders.length > 0) {
-        const revenueByDate = orders.reduce((acc, order) => {
-          const date = new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-          acc[date] = (acc[date] || 0) + (order.total || 0);
-          return acc;
-        }, {} as Record<string, number>);
+      // Same rules as the dashboard totals: real money only, net of refunds.
+      const revenueByDate = ((orders || []) as any[]).filter(countsAsRevenue).reduce((acc, order) => {
+        const date = new Date(order.created_at).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'Asia/Kolkata',
+        });
+        acc[date] = (acc[date] || 0) + netOrderValue(order);
+        return acc;
+      }, {} as Record<string, number>);
 
-        const chartData = Object.entries(revenueByDate).map(([date, revenue]) => ({
-          date,
-          revenue,
-        }));
-
-        setData(chartData);
-      } else {
-        // Sample baseline
-        setData([
-          { date: 'Today', revenue: 4200 },
-          { date: 'Yesterday', revenue: 6800 },
-          { date: '28 Aug', revenue: 5400 },
-          { date: '27 Aug', revenue: 8100 },
-        ]);
-      }
+      setData(Object.entries(revenueByDate).map(([date, revenue]) => ({ date, revenue: revenue as number })));
       setLoading(false);
     }
 
@@ -120,8 +111,11 @@ export default function RevenueOverview() {
           <h4 className="text-xs font-black uppercase tracking-wider text-gray-400">
             Recent Daily Ingress Trajectory
           </h4>
+          {!loading && data.length === 0 && (
+            <p className="text-xs font-semibold text-gray-400 py-4">No paid or delivered orders in the last 30 days.</p>
+          )}
           <div className="divide-y divide-gray-100">
-            {data.slice(-5).map((item) => {
+            {data.slice(-5).reverse().map((item) => {
               const dayEarnings = Math.round(item.revenue * RASAN_COMMISSION_RATE);
               return (
                 <div key={item.date} className="py-2.5 flex items-center justify-between text-xs">

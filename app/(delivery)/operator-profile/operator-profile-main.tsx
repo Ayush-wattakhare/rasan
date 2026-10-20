@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Lock
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 
 export default function OperatorProfileMain({ profile, deliveryPartner }: any) {
   const [formData, setFormData] = useState({
@@ -42,7 +41,6 @@ export default function OperatorProfileMain({ profile, deliveryPartner }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const { toast } = useToast();
-  const supabase = createClient();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -51,13 +49,16 @@ export default function OperatorProfileMain({ profile, deliveryPartner }: any) {
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
-      // 1. Update profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ name: formData.name.trim(), phone: formData.phone.trim() })
-        .eq('id', profile.id);
-
-      if (profileError) throw profileError;
+      // 1. Name & phone through the API (the browser may not write phone directly).
+      const profileRes = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formData.name.trim(), phone: formData.phone.trim() }),
+      });
+      if (!profileRes.ok) {
+        const data = await profileRes.json().catch(() => ({}));
+        throw new Error(data.error || 'Could not update profile');
+      }
 
       // 2. Update bank details & UPI ID via API
       const bankDetails = {

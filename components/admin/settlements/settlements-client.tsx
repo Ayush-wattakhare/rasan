@@ -38,8 +38,8 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/lib/hooks/use-toast';
 import { RASAN_COMMISSION_PERCENTAGE } from '@/lib/utils/constants';
-import type { SettlementRecord } from '@/app/api/admin/settlements/route';
-import { formatDistanceToNow, format } from 'date-fns';
+import type { SettlementRecord } from '@/lib/payouts/settlement-types';
+import { formatDistanceToNow } from 'date-fns';
 
 export function SettlementsClient() {
   const { toast } = useToast();
@@ -85,8 +85,27 @@ export function SettlementsClient() {
 
   const handleOpenSettleModal = (item: SettlementRecord) => {
     setSelectedSettlement(item);
-    setCustomUtr(`UTR-${format(new Date(), 'yyyyMMdd')}-${Math.floor(10000 + Math.random() * 90000)}`);
-    setSettleNotes(`Batch settlement approved for ${item.recipient_name}`);
+    // The real bank / UPI reference of the transfer, typed by finance (never generated).
+    setCustomUtr('');
+    setSettleNotes('');
+  };
+
+  const handleReject = async (item: SettlementRecord) => {
+    const reason = window.prompt(`Reject the ₹${item.amount.toLocaleString('en-IN')} payout for ${item.recipient_name}? Reason:`);
+    if (reason === null) return;
+    try {
+      const res = await fetch('/api/admin/settlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settlementId: item.id, action: 'reject', reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not reject payout');
+      toast({ title: 'Payout Rejected', description: data.message });
+      fetchSettlements();
+    } catch (err: any) {
+      toast({ title: 'Reject Failed', description: err.message, variant: 'destructive' });
+    }
   };
 
   const handleExecuteSettlement = async (e: React.FormEvent) => {
@@ -109,8 +128,8 @@ export function SettlementsClient() {
       if (!res.ok) throw new Error(data.error || 'Failed to settle payout');
 
       toast({
-        title: 'Payout Dispatched & Settled! 💸',
-        description: `₹${selectedSettlement.amount.toLocaleString('en-IN')} wired via ${selectedSettlement.payment_method.toUpperCase()}. Ref: ${customUtr}`,
+        title: 'Payout Marked as Paid 💸',
+        description: data.message || `Ref: ${customUtr}`,
       });
 
       setSelectedSettlement(null);
@@ -195,7 +214,7 @@ export function SettlementsClient() {
             </Badge>
           </div>
           <div className="text-[0.6rem] font-bold text-amber-600/80 uppercase tracking-wider mt-3">
-            Awaiting Admin 1-Click Wire Clearance
+            Pay from the bank, then record the UTR
           </div>
         </Card>
 
@@ -415,7 +434,7 @@ export function SettlementsClient() {
                           <div className="flex items-center gap-1.5">
                             <span className={`w-2 h-2 rounded-full ${isPending ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
                             <span className={`text-[0.65rem] font-black uppercase tracking-wider ${isPending ? 'text-amber-700' : 'text-emerald-700'}`}>
-                              {isPending ? 'Pending Clearance' : 'Settled & Reconciled'}
+                              {isPending ? 'Awaiting Payment' : item.status === 'rejected' ? 'Rejected' : 'Paid'}
                             </span>
                           </div>
                           <p className="text-[0.65rem] text-gray-400 font-medium mt-1">
@@ -437,12 +456,25 @@ export function SettlementsClient() {
                       {/* Action */}
                       <td className="py-4 px-5 text-right">
                         {isPending ? (
-                          <Button
-                            onClick={() => handleOpenSettleModal(item)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider h-10 px-4 rounded-xl shadow-md flex items-center gap-1.5 ml-auto cursor-pointer"
-                          >
-                            <Zap className="w-3.5 h-3.5" /> 1-Click Settle
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => handleReject(item)}
+                              className="border-red-200 text-red-600 hover:bg-red-50 font-black text-xs uppercase tracking-wider h-10 px-3 rounded-xl cursor-pointer"
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              onClick={() => handleOpenSettleModal(item)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider h-10 px-4 rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Zap className="w-3.5 h-3.5" /> Mark as Paid
+                            </Button>
+                          </div>
+                        ) : item.status === 'rejected' ? (
+                          <Badge className="bg-gray-100 text-gray-600 border border-gray-200 font-black text-[0.65rem] px-3 py-1.5 rounded-xl uppercase tracking-wider">
+                            Rejected
+                          </Badge>
                         ) : (
                           <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-black text-[0.65rem] px-3 py-1.5 rounded-xl uppercase tracking-wider">
                             ✓ Transferred
@@ -520,7 +552,8 @@ export function SettlementsClient() {
                   required
                   value={customUtr}
                   onChange={(e) => setCustomUtr(e.target.value)}
-                  placeholder="e.g. UTR-20261008-84291"
+                  minLength={6}
+                  placeholder="Bank / UPI reference of the transfer you made"
                   className="font-mono text-xs font-bold rounded-xl h-11"
                 />
               </div>

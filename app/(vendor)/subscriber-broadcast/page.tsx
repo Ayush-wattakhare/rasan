@@ -87,7 +87,7 @@ export default function SubscriberBroadcastPage() {
   const [showStoryModal, setShowStoryModal] = useState(false);
 
   const getWhatsAppFormattedText = () => {
-    const bizName = vendorData?.business_name || "Anita's Home Kitchen";
+    const bizName = vendorData?.business_name || 'Your Kitchen';
     let text = `🍲 *${bizName} - Tomorrow's Tiffin Menu* 🌿\n\n`;
     text += `⏰ *Meal Window:* ${tomorrowMenu.meal_type || 'Lunch & Dinner'}\n\n`;
     text += `✨ *Tomorrow's Fresh Preparation:*\n`;
@@ -1326,7 +1326,7 @@ export default function SubscriberBroadcastPage() {
                     <ChefHat className="w-4 h-4" />
                   </div>
                   <h3 className="text-base font-black text-white uppercase italic tracking-tight line-clamp-1">
-                    {vendorData?.business_name || "Anita's Home Kitchen"}
+                    {vendorData?.business_name || 'Your Kitchen'}
                   </h3>
                 </div>
                 <p className="text-[0.6rem] text-orange-200/80 font-bold uppercase tracking-wider">

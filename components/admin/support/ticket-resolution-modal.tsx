@@ -70,27 +70,40 @@ export function TicketResolutionModal({
         throw new Error('Failed to update ticket');
       }
 
-      // If refund was entered, log into refunds ledger
+      // Refund the customer through Razorpay, or record a partner payment.
+      let refundNote = '';
       if (refundAmount && parseFloat(refundAmount) > 0) {
-        await fetch('/api/admin/refunds', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: ticket.order_id || 'N/A',
-            recipientId: ticket.user_id,
-            recipientRole: ticket.user_role,
-            recipientName: ticket.user_name,
-            amount: parseFloat(refundAmount),
-            type: ticket.user_role === 'customer' ? 'customer_refund' : 'vendor_compensation',
-            reason: `Resolution for Ticket #${ticket.ticket_number}: ${ticket.subject}`,
-            gateway: 'upi',
-          }),
-        });
+        const isCustomer = ticket.user_role === 'customer';
+        if (isCustomer && !ticket.order_id) {
+          refundNote = ' No order is linked to this ticket, so no refund was sent.';
+        } else {
+          const refundRes = await fetch('/api/admin/refunds', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: ticket.order_id || undefined,
+              recipientId: isCustomer ? undefined : ticket.user_id,
+              amount: parseFloat(refundAmount),
+              type: isCustomer
+                ? 'customer_refund'
+                : ticket.user_role === 'delivery'
+                  ? 'rider_waiting_fee'
+                  : 'vendor_compensation',
+              reason: `Resolution for Ticket #${ticket.ticket_number}: ${ticket.subject}`,
+              // One refund per ticket, even if the admin resolves it twice.
+              idempotencyKey: `TICKET-${ticket.id}`,
+            }),
+          });
+          const refundData = await refundRes.json().catch(() => ({}));
+          refundNote = refundRes.ok || refundData.queued
+            ? ` ${refundData.message || refundData.error || ''}`
+            : ` Refund not sent: ${refundData.error || 'unknown error'}.`;
+        }
       }
 
       toast({
         title: '🎉 Resolution Dispatched',
-        description: `Ticket #${ticket.ticket_number} marked as ${status.toUpperCase()}. User notified.`,
+        description: `Ticket #${ticket.ticket_number} marked as ${status.toUpperCase()}.${refundNote}`,
       });
 
       onUpdated();

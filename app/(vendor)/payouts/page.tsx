@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { RASAN_COMMISSION_PERCENTAGE, RASAN_COMMISSION_RATE } from '@/lib/utils/constants';
+import { istPeriodStarts } from '@/lib/utils/ist-date';
 import { IndianRupee } from 'lucide-react';
 import { VendorPayoutsClient } from '@/components/vendor/vendor-payouts-client';
 
@@ -35,29 +36,31 @@ export default async function PayoutsPage() {
     redirect('/become-vendor');
   }
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  // Periods in India time (the server runs in UTC).
+  const periods = istPeriodStarts();
 
-  const ordersQuery = serviceClient
-    .from('orders')
-    .select('id, total, status, created_at')
+  // Same basis as request_payout() (migration 008): the food value (subtotal,
+  // not the platform fee) of delivered, non-refunded orders, minus refunds.
+  const { data: rawOrders } = await (serviceClient.from('orders') as any)
+    .select('id, total, subtotal, refunded_amount, payment_status, status, created_at, actual_delivery_time')
     .eq('vendor_id', vendor.id)
     .eq('status', 'delivered')
+    .neq('payment_status', 'refunded')
     .order('created_at', { ascending: false });
+  const allDeliveredOrders: any[] = rawOrders || [];
+  const deliveredAt = (o: any) => o.actual_delivery_time || o.created_at;
 
-  const { data: rawOrders } = await ordersQuery;
-  const allDeliveredOrders = rawOrders || [];
+  const todayOrders = allDeliveredOrders.filter((o) => deliveredAt(o) >= periods.today);
+  const weekOrders = allDeliveredOrders.filter((o) => deliveredAt(o) >= periods.week);
+  const monthOrders = allDeliveredOrders.filter((o) => deliveredAt(o) >= periods.month);
 
-  const todayOrders = allDeliveredOrders.filter((o) => o.created_at >= startOfToday);
-  const weekOrders = allDeliveredOrders.filter((o) => o.created_at >= startOfWeek);
-  const monthOrders = allDeliveredOrders.filter((o) => o.created_at >= startOfMonth);
-
-  const PLATFORM_FEE = RASAN_COMMISSION_RATE;
+  const COMMISSION = RASAN_COMMISSION_RATE;
   const calc = (orders: any[]) => {
-    const gross = orders.reduce((s, o) => s + (o.total || 0), 0);
-    return { gross, fee: gross * PLATFORM_FEE, net: gross * (1 - PLATFORM_FEE), count: orders.length };
+    const gross = orders.reduce(
+      (s, o) => s + Math.max(0, Number(o.subtotal ?? o.total ?? 0) - Number(o.refunded_amount || 0)),
+      0
+    );
+    return { gross, fee: gross * COMMISSION, net: gross * (1 - COMMISSION), count: orders.length };
   };
 
   const today = calc(todayOrders);
@@ -105,7 +108,7 @@ export default async function PayoutsPage() {
           stats={stats}
           allOrders={allDeliveredOrders}
           vendor={vendor}
-          platformFeePct={PLATFORM_FEE}
+          platformFeePct={COMMISSION}
           requestedPayouts={requestedPayouts}
         />
       </div>

@@ -120,9 +120,21 @@ export default function CancelOrderDialog({
                 <span className="text-gray-900 font-black">{result.refundPercentage}%</span>
               </div>
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-gray-400 uppercase">Amount Refunded</span>
-                <span className="text-orange-600 font-black text-sm">₹{result.refundAmount.toFixed(2)}</span>
+                <span className="text-gray-400 uppercase">
+                  {result.refundState === 'queued' ? 'Refund Under Review' : 'Refund Initiated'}
+                </span>
+                <span className="text-orange-600 font-black text-sm">₹{Number(result.refundAmount || 0).toFixed(2)}</span>
               </div>
+              {result.refundState === 'initiated' && (
+                <p className="text-[0.65rem] font-semibold text-gray-500 pt-1">
+                  Sent back to your original payment method. It usually arrives in 5–7 working days.
+                </p>
+              )}
+              {result.refundState === 'queued' && (
+                <p className="text-[0.65rem] font-semibold text-gray-500 pt-1">
+                  Our team will process this refund shortly. You&apos;ll get a notification when it&apos;s sent.
+                </p>
+              )}
             </div>
             <Button
               onClick={onClose}

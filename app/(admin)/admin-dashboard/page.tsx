@@ -6,6 +6,8 @@ import RecentActivity from '@/components/admin/recent-activity';
 import AdminDashboardActions from '@/components/admin/admin-dashboard-actions';
 import AdminCommandActions from '@/components/admin/admin-command-actions';
 import AdminTacticalMap from '@/components/admin/admin-tactical-map';
+import { revenueSummary } from '@/lib/analytics/revenue';
+import { sweepUnpaidOrders } from '@/lib/orders/stock';
 import { 
   ShieldCheck, BarChart3, Users, Zap, RefreshCcw, Database, 
   AlertTriangle, Radio, Settings2, Lock, Globe, Map as MapIcon, 
@@ -17,17 +19,25 @@ import { Badge } from '@/components/ui/badge';
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
 
+  // Clear abandoned online checkouts first so they don't show up as "late orders".
+  await sweepUnpaidOrders();
+
   // Fetch system stats
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const [usersResult, ordersResult, vendorsResult, subscriptionsResult, lateOrdersResult, failedPaymentsResult] = await Promise.all([
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
-    supabase.from('orders').select('id, total', { count: 'exact' }),
+    (supabase.from('orders') as any).select(
+      'id, total, subtotal, tax, refunded_amount, status, payment_status, payment_method, created_at, actual_delivery_time',
+      { count: 'exact' }
+    ),
     supabase.from('vendors').select('id', { count: 'exact', head: true }),
     supabase.from('subscriptions').select('id', { count: 'exact', head: true }),
     // Real anomaly: orders stuck in pending/confirmed/preparing > 30 mins
     supabase.from('orders')
       .select('id, status, created_at')
+      // Unpaid online checkouts aren't kitchen work: only paid or cash orders.
       .in('status', ['pending', 'confirmed', 'preparing'])
+      .or('payment_method.eq.cash,payment_status.eq.paid')
       .lt('created_at', thirtyMinutesAgo)
       .order('created_at', { ascending: true })
       .limit(5),
@@ -39,9 +49,34 @@ export default async function AdminDashboardPage() {
       .limit(5),
   ]);
 
-  const totalRevenue = ordersResult.data?.reduce((sum, order) => sum + (order.total || 0), 0) || 0;
-  const rasanEarnings = Math.round(totalRevenue * 0.25);
-  const vendorPayouts = Math.round(totalRevenue * 0.75);
+  // Only money that is real: delivered or paid & active orders, net of refunds;
+  // the split follows the actual commission rate.
+  const allOrders: any[] = ordersResult.data || [];
+  const revenue = revenueSummary(allOrders);
+  const totalRevenue = Math.round(revenue.grossRevenue);
+  const rasanEarnings = Math.round(revenue.platformEarnings);
+  const vendorPayouts = Math.round(revenue.vendorShare);
+
+  // Last 30 days: share of closed orders that were delivered (not cancelled),
+  // and average minutes from order to doorstep.
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recent = allOrders.filter((o) => Date.parse(o.created_at) >= since);
+  const delivered = recent.filter((o) => o.status === 'delivered');
+  // Abandoned online checkouts (never paid) are not failed deliveries.
+  const cancelledReal = recent.filter(
+    (o) => o.status === 'cancelled' && (o.payment_method === 'cash' || o.payment_status !== 'pending')
+  );
+  const closed = delivered.length + cancelledReal.length;
+  const successRate = closed > 0 ? `${((delivered.length / closed) * 100).toFixed(1)}%` : '—';
+  const deliveryMinutes = delivered
+    .map((o) => (Date.parse(o.actual_delivery_time) - Date.parse(o.created_at)) / 60000)
+    .filter((m) => Number.isFinite(m) && m > 0 && m < 24 * 60);
+  const avgDelivery =
+    deliveryMinutes.length > 0
+      ? Math.round(deliveryMinutes.reduce((s, m) => s + m, 0) / deliveryMinutes.length)
+      : null;
+  const velocity = avgDelivery === null ? '—' : `${avgDelivery}m`;
+  const successPct = closed > 0 ? Math.round((delivered.length / closed) * 100) : 0;
 
   const stats = {
     totalUsers: usersResult.count || 0,
@@ -126,16 +161,23 @@ export default async function AdminDashboardPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1">
-                        <span className="text-[0.5rem] font-bold text-gray-500 uppercase tracking-widest block">Success</span>
-                        <span className="text-lg font-black text-white italic leading-tight">99.8%</span>
+                        <span className="text-[0.5rem] font-bold text-gray-500 uppercase tracking-widest block">Delivered (30d)</span>
+                        <span className="text-lg font-black text-white italic leading-tight">{successRate}</span>
                      </div>
                      <div className="space-y-1 text-right">
-                        <span className="text-[0.5rem] font-bold text-gray-500 uppercase tracking-widest block">Velocity</span>
-                        <span className="text-lg font-black text-white italic leading-tight">28m</span>
+                        <span className="text-[0.5rem] font-bold text-gray-500 uppercase tracking-widest block">Avg. Delivery</span>
+                        <span className="text-lg font-black text-white italic leading-tight">{velocity}</span>
                      </div>
                   </div>
-                  <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                     <div className="bg-orange-600 w-[85%] h-full"></div>
+                  <div
+                    className="w-full bg-white/5 h-1 rounded-full overflow-hidden"
+                    role="progressbar"
+                    aria-label="Delivered share of closed orders, last 30 days"
+                    aria-valuenow={successPct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                     <div className="bg-orange-600 h-full" style={{ width: `${successPct}%` }}></div>
                   </div>
                </div>
                <AdminDashboardActions />

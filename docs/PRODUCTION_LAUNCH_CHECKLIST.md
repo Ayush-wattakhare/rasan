@@ -4,9 +4,19 @@ This checklist guides you through the final configuration steps to launch Rasan 
 
 ---
 
-## 🗄️ Step 1: Execute Migration 005 in Supabase SQL Editor
+## 🗄️ Step 1: Apply all migrations in Supabase SQL Editor
 
-Before taking live orders, ensure the admin persistence tables from Migration 005 are created in your Supabase production database:
+Apply every file in `supabase/migrations/` in order (001 → 008). Migration 004 (`phone_verified`) is required by 006, and 008 must run **before** deploying the code that uses it (refunds, stock reservation, order expiry, payouts). Check what is applied with:
+
+```sql
+SELECT
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'phone_verified') AS m004,
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'is_approved') AS m006,
+  to_regprocedure('nearby_kitchens(double precision,double precision,double precision)') IS NOT NULL AS m007,
+  to_regprocedure('reserve_order_stock(uuid)') IS NOT NULL AS m008;
+```
+
+The original instructions for 005 follow. Ensure the admin persistence tables from Migration 005 are created in your Supabase production database:
 
 1. Open your **[Supabase Dashboard](https://supabase.com/dashboard)**.
 2. Select your Rasan production project.
@@ -40,6 +50,8 @@ You do **not** need a custom domain yet. You can use your active Vercel domain (
    - ☑️ `payment.captured`
    - ☑️ `order.paid`
    - ☑️ `payment.failed`
+   - ☑️ `refund.processed`
+   - ☑️ `refund.failed`
 7. Click **Save Webhook**.
 
 ---
@@ -59,6 +71,9 @@ You do **not** need a custom domain yet. You can use your active Vercel domain (
 | `RAZORPAY_KEY_SECRET`           | Your Razorpay API Key Secret                                       | **Required** |
 | `RAZORPAY_WEBHOOK_SECRET`       | The Webhook Secret created in Step 2                               | **Required** |
 | `NEXT_PUBLIC_APP_URL`           | `https://rasan-pi.vercel.app` (or your custom domain)              | **Required** |
+| `CRON_SECRET`                   | Long random string; Vercel Cron uses it for `/api/cron/expire-orders` | **Required** |
+| `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Shared rate limits across instances (OTP / PIN / geocode)       | _Recommended_ |
+| `NEXT_PUBLIC_UPI_PAYEE_VPA`     | Rasan's UPI ID for rider QR collection (QR hidden if empty)        | _Optional_   |
 | `FAST2SMS_API_KEY`              | Optional: Your Fast2SMS API Key (defaults to mock log if empty)    | _Optional_   |
 | `TWILIO_ACCOUNT_SID`            | Optional: Twilio SID for global SMS                                | _Optional_   |
 

@@ -35,6 +35,14 @@ export function SupportTicketsClient() {
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
 
+  // Real waiting time of the oldest unresolved ticket (no made-up SLA figures).
+  const oldestOpen = tickets
+    .filter((t) => t.status === 'open' || t.status === 'in_progress')
+    .reduce<SupportTicket | null>(
+      (oldest, t) => (!oldest || Date.parse(t.created_at) < Date.parse(oldest.created_at) ? t : oldest),
+      null
+    );
+
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -124,11 +132,15 @@ export function SupportTicketsClient() {
 
           <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100 space-y-2">
             <div className="flex items-center justify-between text-gray-400">
-              <span className="text-[0.6rem] font-black uppercase tracking-widest">Dispute SLA Target</span>
+              <span className="text-[0.6rem] font-black uppercase tracking-widest">Oldest Open Ticket</span>
               <Clock className="w-4 h-4 text-blue-600" />
             </div>
-            <div className="text-3xl font-black text-gray-900 tracking-tight italic">&lt; 15 Mins</div>
-            <p className="text-[0.65rem] text-blue-600 font-bold uppercase">98.4% On-time resolution</p>
+            <div className="text-3xl font-black text-gray-900 tracking-tight italic">
+              {oldestOpen ? formatDistanceToNow(new Date(oldestOpen.created_at)) : '—'}
+            </div>
+            <p className="text-[0.65rem] text-blue-600 font-bold uppercase">
+              {oldestOpen ? `#${oldestOpen.ticket_number} waiting` : 'Nothing waiting'}
+            </p>
           </div>
         </div>
 

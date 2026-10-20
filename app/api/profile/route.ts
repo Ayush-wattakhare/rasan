@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { sanitizeAddressFields } from '@/lib/utils/address';
+import { requireUser } from '@/lib/auth/guards';
 
 export async function GET() {
   try {
@@ -38,15 +39,10 @@ const sanitizeAddress = (raw: unknown) => sanitizeAddressFields(raw, ['street', 
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Signed in and not suspended.
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+    const { user, supabase } = auth;
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
