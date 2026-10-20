@@ -1,99 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/guards';
+import { istPeriodStarts } from '@/lib/utils/ist-date';
 
-export async function GET(request: NextRequest) {
+const ACTIVE = ['picked_up', 'out_for_delivery'];
+
+/** Rider stats in India time, by delivery time, using what the rider earned. */
+export async function GET() {
+  const auth = await requireRole('delivery');
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
+
   try {
-    const supabase = await createClient();
-
-    // Verify the user is authenticated and is a delivery partner
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get delivery partner data
-    const { data: deliveryPartner, error: dpError } = await supabase
+    const { data: deliveryPartner } = await supabase
       .from('delivery_partners')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (dpError || !deliveryPartner) {
-      return NextResponse.json(
-        { error: 'Delivery partner not found' },
-        { status: 404 }
-      );
+    if (!deliveryPartner) {
+      return NextResponse.json({ error: 'Delivery partner not found' }, { status: 404 });
     }
 
-    // Get today's stats
-    const today = new Date().toISOString().split('T')[0];
-    const { data: todayOrders } = await supabase
-      .from('orders')
-      .select('id, delivery_fee, status')
-      .eq('delivery_partner_id', deliveryPartner.id)
-      .gte('created_at', `${today}T00:00:00`)
-      .lte('created_at', `${today}T23:59:59`);
+    const periods = istPeriodStarts();
+    const since = periods.month < periods.week ? periods.month : periods.week;
+    const [{ data: delivered }, { count: activeOrders }] = await Promise.all([
+      (supabase.from('orders') as any)
+        .select('delivery_fee, rider_fee, actual_delivery_time')
+        .eq('delivery_partner_id', deliveryPartner.id)
+        .eq('status', 'delivered')
+        .gte('actual_delivery_time', since),
+      supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('delivery_partner_id', deliveryPartner.id)
+        .in('status', ACTIVE as any),
+    ]);
 
-    // Get this week's stats
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const { data: weekOrders } = await supabase
-      .from('orders')
-      .select('id, delivery_fee, status')
-      .eq('delivery_partner_id', deliveryPartner.id)
-      .gte('created_at', weekStart.toISOString());
-
-    // Get this month's stats
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    const { data: monthOrders } = await supabase
-      .from('orders')
-      .select('id, delivery_fee, status')
-      .eq('delivery_partner_id', deliveryPartner.id)
-      .gte('created_at', monthStart.toISOString());
-
-    // Calculate stats
-    const todayDelivered = todayOrders?.filter(o => o.status === 'delivered') || [];
-    const weekDelivered = weekOrders?.filter(o => o.status === 'delivered') || [];
-    const monthDelivered = monthOrders?.filter(o => o.status === 'delivered') || [];
-
-    const stats = {
-      today: {
-        deliveries: todayDelivered.length,
-        earnings: todayDelivered.reduce((sum, order) => sum + (order.delivery_fee || 0), 0),
-        activeOrders: todayOrders?.filter(o => ['confirmed', 'preparing', 'ready', 'ready_for_pickup', 'picked_up', 'out_for_delivery'].includes(o.status)).length || 0,
-      },
-      week: {
-        deliveries: weekDelivered.length,
-        earnings: weekDelivered.reduce((sum, order) => sum + (order.delivery_fee || 0), 0),
-      },
-      month: {
-        deliveries: monthDelivered.length,
-        earnings: monthDelivered.reduce((sum, order) => sum + (order.delivery_fee || 0), 0),
-      },
-      overall: {
-        rating: deliveryPartner.rating,
-        totalDeliveries: deliveryPartner.total_deliveries,
-        totalEarnings: deliveryPartner.earnings?.total || 0,
-        isOnline: deliveryPartner.is_online,
-        vehicleType: deliveryPartner.vehicle_type,
-        vehicleNumber: deliveryPartner.vehicle_number,
-      }
+    const rows: any[] = delivered || [];
+    const earned = (o: any) => Number(o.rider_fee ?? o.delivery_fee) || 0;
+    const period = (start: string) => {
+      const list = rows.filter((o) => o.actual_delivery_time >= start);
+      return { deliveries: list.length, earnings: list.reduce((s, o) => s + earned(o), 0) };
     };
 
     return NextResponse.json({
       success: true,
-      stats,
+      stats: {
+        today: { ...period(periods.today), activeOrders: activeOrders || 0 },
+        week: period(periods.week),
+        month: period(periods.month),
+        overall: {
+          rating: deliveryPartner.rating,
+          totalDeliveries: deliveryPartner.total_deliveries,
+          // Withdrawable balance (payouts already deducted).
+          totalEarnings: (deliveryPartner.earnings as any)?.total || 0,
+          isOnline: deliveryPartner.is_online,
+          vehicleType: deliveryPartner.vehicle_type,
+          vehicleNumber: deliveryPartner.vehicle_number,
+        },
+      },
     });
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Delivery stats error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

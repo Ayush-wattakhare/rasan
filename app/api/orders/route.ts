@@ -7,6 +7,10 @@ import { createHandoverCode } from '@/lib/utils/delivery-otp-server';
 import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
 import { coordsFromAddress, parseVendorLocation } from '@/lib/utils/geo';
 import { defaultPlanStart, isValidPlanStart, planMealCount } from '@/lib/pricing/plan-schedule';
+import { releaseOrderStock, reserveOrderStock, sweepUnpaidOrders } from '@/lib/orders/stock';
+import { createSubscriptionForOrder, orderHasPlan } from '@/lib/subscriptions/from-order';
+import { sanitizeDeliveryAddress } from '@/lib/utils/address';
+import { onlinePaymentsConfigured } from '@/lib/payments/razorpay-client';
 import type { PaymentMethod, SubscriptionType } from '@/types';
 
 const PAYMENT_METHODS: readonly PaymentMethod[] = ['cash', 'card', 'upi', 'wallet'];
@@ -81,6 +85,15 @@ export async function POST(request: NextRequest) {
     if (!PAYMENT_METHODS.includes(paymentMethod)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
     }
+    // Don't create an online order that can never be paid (orphan pending order).
+    if (paymentMethod !== 'cash' && !onlinePaymentsConfigured()) {
+      return NextResponse.json(
+        { error: 'Online payment is not available right now. Please choose Cash on Delivery.', code: 'PAYMENTS_UNAVAILABLE' },
+        { status: 503 }
+      );
+    }
+    // Clear abandoned checkouts (gives their stock back) before taking a new order.
+    await sweepUnpaidOrders();
     if (!deliveryAddress || typeof deliveryAddress !== 'object' || Array.isArray(deliveryAddress)) {
       return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 });
     }
@@ -214,13 +227,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
     }
 
+    const discardOrder = async () => {
+      await releaseOrderStock(order.id);
+      await serviceClient.from('orders').delete().eq('id', order.id);
+    };
+
     // Handover PIN, readable only by this customer (order_handover_codes).
     if (!(await createHandoverCode(order.id))) {
-      await serviceClient.from('orders').delete().eq('id', order.id);
+      await discardOrder();
       return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
     }
 
-    return NextResponse.json(order, { status: 201 });
+    // Take the quantities out of stock now, atomically (two customers can't both
+    // buy the last portion). Released if the order is cancelled or expires.
+    const reserved = await reserveOrderStock(order.id);
+    if (!reserved.ok) {
+      await discardOrder();
+      const soldOut = reserved.outOfStockMealId ? mealsById.get(reserved.outOfStockMealId)?.name : null;
+      return NextResponse.json(
+        { error: 'Some items are no longer available', unavailableItems: soldOut ? [soldOut] : [] },
+        { status: 409 }
+      );
+    }
+
+    // A weekly / monthly plan is created here, with the order, so it exists even
+    // if the browser closes after paying. It starts once the order is paid.
+    let subscription: unknown = null;
+    if (orderHasPlan(pricedItems)) {
+      const planAddress = sanitizeDeliveryAddress(deliveryAddress);
+      const result = planAddress
+        ? await createSubscriptionForOrder(order as any, { address: planAddress })
+        : ({ ok: false, status: 400, error: 'A valid delivery address is required for a plan' } as const);
+      if (!result.ok) {
+        await discardOrder();
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      subscription = result.subscription;
+    }
+
+    return NextResponse.json({ ...order, subscription }, { status: 201 });
   } catch (error) {
     console.error('Order API error:', error);
     return NextResponse.json(

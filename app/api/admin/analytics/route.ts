@@ -1,73 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
+import { revenueSummary } from '@/lib/analytics/revenue';
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/;
 
 export async function GET(request: NextRequest) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
 
   const searchParams = request.nextUrl.searchParams;
   const dateFrom = searchParams.get('date_from');
   const dateTo = searchParams.get('date_to');
+  if ((dateFrom && !ISO_DATE.test(dateFrom)) || (dateTo && !ISO_DATE.test(dateTo))) {
+    return NextResponse.json({ error: 'Dates must be ISO formatted (YYYY-MM-DD)' }, { status: 400 });
+  }
 
   try {
-    let ordersQuery = supabase.from('orders').select('*');
-    
-    if (dateFrom) {
-      ordersQuery = ordersQuery.gte('created_at', dateFrom);
-    }
-    if (dateTo) {
-      ordersQuery = ordersQuery.lte('created_at', dateTo);
-    }
+    const db = createServiceClient();
+    let ordersQuery = (db.from('orders') as any).select(
+      'status, payment_status, payment_method, total, subtotal, tax, refunded_amount, created_at'
+    );
+    if (dateFrom) ordersQuery = ordersQuery.gte('created_at', dateFrom);
+    if (dateTo) ordersQuery = ordersQuery.lte('created_at', dateTo);
 
     const [
-      { data: orders },
+      { data: orders, error: ordersError },
       { count: totalUsers },
       { count: totalVendors },
       { count: totalDeliveryPartners },
     ] = await Promise.all([
       ordersQuery,
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('vendors').select('id', { count: 'exact', head: true }),
-      supabase.from('delivery_partners').select('id', { count: 'exact', head: true }),
+      db.from('profiles').select('id', { count: 'exact', head: true }),
+      db.from('vendors').select('id', { count: 'exact', head: true }),
+      db.from('delivery_partners').select('id', { count: 'exact', head: true }),
     ]);
+    if (ordersError) throw ordersError;
 
-    const totalRevenue = orders?.reduce((sum, order) => sum + (order.total || 0), 0) || 0;
-    const totalOrders = orders?.length || 0;
-
-    const ordersByStatus = orders?.reduce((acc, order) => {
+    const rows = (orders || []) as any[];
+    const summary = revenueSummary(rows);
+    const ordersByStatus = rows.reduce((acc: Record<string, number>, order) => {
       acc[order.status] = (acc[order.status] || 0) + 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {});
 
     return NextResponse.json({
       totalUsers: totalUsers || 0,
       totalVendors: totalVendors || 0,
       totalDeliveryPartners: totalDeliveryPartners || 0,
-      totalOrders,
-      totalRevenue,
+      totalOrders: rows.length,
+      completedOrders: summary.orders,
+      totalRevenue: summary.grossRevenue,
+      platformEarnings: summary.platformEarnings,
+      vendorPayouts: summary.vendorShare,
+      averageOrderValue: summary.averageOrderValue,
       ordersByStatus,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to fetch analytics' },
-      { status: 500 }
-    );
+    console.error('Admin analytics error:', error);
+    return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 });
   }
 }

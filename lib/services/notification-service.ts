@@ -1,12 +1,13 @@
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import type { NotificationInsert } from '@/lib/supabase/types';
 
 /**
- * Service for managing notifications
+ * Server-side notifications. Users cannot insert notifications themselves
+ * (migration 006), so these are written with the service role.
  */
 
 export async function createNotification(notification: NotificationInsert) {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const { data, error } = await supabase
     .from('notifications')

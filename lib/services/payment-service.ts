@@ -100,15 +100,6 @@ export class PaymentService {
   }
 
   /**
-   * Process cash payment (no external gateway)
-   */
-  async processCashPayment(orderId: string): Promise<{ success: boolean }> {
-    // For cash payments, we just mark the order as confirmed
-    // Payment will be collected on delivery
-    return { success: true };
-  }
-
-  /**
    * Get payment method display name
    */
   getPaymentMethodName(method: PaymentMethod): string {

@@ -1,66 +1,16 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const {
-      vehicle_type,
-      vehicle_number,
-      license_number,
-      documents,
-      bank_details,
-    } = body;
-
-    // Validate required fields
-    if (!vehicle_type || !vehicle_number || !license_number) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Create delivery partner record
-    const { data: deliveryPartner, error } = await supabase
-      .from('delivery_partners')
-      .insert({
-        user_id: user.id,
-        vehicle_type,
-        vehicle_number,
-        license_number,
-        documents,
-        bank_details,
-        // is_online, is_verified, rating, total_deliveries and earnings use
-        // database defaults (offline, unverified, zero) and can't be set by users.
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating delivery partner:', error);
-      return NextResponse.json(
-        { error: 'Failed to create delivery partner' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(deliveryPartner, { status: 201 });
-  } catch (error) {
-    console.error('Error in POST /api/delivery-partners:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+/**
+ * Rider sign-up goes through POST /api/become-delivery-partner (role change,
+ * admin review, notifications). Creating a rider row directly let any
+ * customer skip that flow, so this endpoint is retired.
+ */
+export async function POST() {
+  return NextResponse.json(
+    { error: 'Apply through /become-delivery-partner', code: 'USE_APPLICATION_FLOW' },
+    { status: 410 }
+  );
 }
 
 export async function GET(request: Request) {

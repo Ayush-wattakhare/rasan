@@ -1,50 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth/guards';
+import { setRiderOnline } from '@/lib/delivery/availability';
 
+/** Rider goes online / offline. Only verified riders can go online. */
 export async function POST(request: NextRequest) {
+  const auth = await requireRole('delivery');
+  if (!auth.ok) return auth.response;
+
   try {
-    const body = await request.json();
-    const { deliveryPartnerId, isOnline } = body;
+    const body = await request.json().catch(() => ({}));
+    const { deliveryPartnerId, isOnline } = body ?? {};
 
-    if (!deliveryPartnerId || typeof isOnline !== 'boolean') {
-      return NextResponse.json(
-        { error: 'Delivery partner ID and online status are required' },
-        { status: 400 }
-      );
+    if (typeof isOnline !== 'boolean') {
+      return NextResponse.json({ error: 'Online status is required' }, { status: 400 });
     }
 
-    const supabase = await createClient();
-
-    // Verify the user is authenticated and is the delivery partner
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Update delivery partner online status
-    const { error: updateError } = await supabase
-      .from('delivery_partners')
-      .update({ 
-        is_online: isOnline,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', deliveryPartnerId)
-      .eq('user_id', user.id); // Ensure user can only update their own status
-
-    if (updateError) {
-      console.error('Error updating online status:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update online status' },
-        { status: 500 }
-      );
-    }
-
-    // Log the status change for debugging
-    console.log(`Delivery partner ${deliveryPartnerId} status changed to ${isOnline ? 'online' : 'offline'}`);
+    const result = await setRiderOnline(auth.user.id, isOnline, deliveryPartnerId);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
     return NextResponse.json({
       success: true,
@@ -53,10 +25,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Toggle online error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

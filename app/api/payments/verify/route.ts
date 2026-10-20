@@ -9,6 +9,8 @@ import {
   signaturesMatch,
   toMinorUnits,
 } from '@/lib/payments/order-payment';
+import { getRazorpay } from '@/lib/payments/razorpay-client';
+import { refundStrayPayment } from '@/lib/payments/refunds';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -66,6 +68,28 @@ export async function POST(request: NextRequest) {
       if (!signaturesMatch(expected, signature)) {
         return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
       }
+
+      // The signature proves the payment exists; confirm the money is actually
+      // captured (accounts with manual capture only "authorize" at checkout).
+      const razorpay = getRazorpay();
+      if (razorpay) {
+        try {
+          const payment = await razorpay.payments.fetch(paymentId);
+          const expectedMinor = toMinorUnits(order.total);
+          if (payment.order_id !== razorpayOrderId || Number(payment.amount) !== expectedMinor || payment.currency !== 'INR') {
+            return NextResponse.json({ error: 'Payment does not match this order' }, { status: 400 });
+          }
+          if (payment.status === 'authorized') {
+            await razorpay.payments.capture(paymentId, expectedMinor, 'INR');
+          } else if (payment.status !== 'captured') {
+            return NextResponse.json({ error: `Payment is ${payment.status}, not completed` }, { status: 402 });
+          }
+        } catch (err: any) {
+          // Gateway unreachable: the signature is valid, and the webhook reconciles
+          // the final state, so don't block the customer on this extra check.
+          console.warn('Verify: could not confirm payment status with Razorpay:', err?.error?.description || err?.message);
+        }
+      }
     } else if (provider === 'stripe') {
       if (!stripe) {
         return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
@@ -96,10 +120,31 @@ export async function POST(request: NextRequest) {
       if (result.alreadyPaidWith === paymentId) {
         return NextResponse.json({ success: true, message: 'Payment already verified' });
       }
+      // Money was taken for an order that can't accept it: give it back now
+      // (the webhook does the same; both are idempotent per payment id).
+      // Re-read first: the webhook may have recorded this same payment a moment ago.
+      const { data: latest } = await createServiceClient()
+        .from('orders')
+        .select('payment_status, payment_id')
+        .eq('id', order.id)
+        .maybeSingle();
+      if (latest?.payment_status === 'paid' && latest.payment_id === paymentId) {
+        return NextResponse.json({ success: true, message: 'Payment already verified' });
+      }
+      if (provider === 'razorpay') {
+        await refundStrayPayment({
+          paymentId,
+          amountMinor: toMinorUnits(order.total),
+          order: { id: order.id, customer_id: auth.user.id },
+          reason: result.cancelled
+            ? 'Payment arrived after the order was cancelled'
+            : 'Payment arrived for an order that was no longer awaiting payment',
+        });
+      }
       return NextResponse.json(
         {
           error: result.cancelled
-            ? 'This order was cancelled. If you were charged, a refund will be reviewed by our team.'
+            ? 'This order was cancelled, so your payment is being refunded to your original payment method.'
             : 'This order is no longer awaiting payment.',
         },
         { status: 409 }

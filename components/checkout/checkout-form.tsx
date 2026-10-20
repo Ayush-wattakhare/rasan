@@ -30,7 +30,7 @@ import { paymentService } from '@/lib/services/payment-service';
 import { getStoredDeliveryLocation } from '@/lib/hooks/use-location';
 import { getTimeOfDayInfo } from '@/lib/utils/format';
 import { haversineDistanceKm, MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
-import { getItemPricing } from '@/lib/pricing/order-pricing';
+import { getItemPricing, SUBSCRIPTION_DISCOUNT_PCT } from '@/lib/pricing/order-pricing';
 import type { Address, PaymentMethod } from '@/types';
 import type { AccurateLocationResult } from '@/lib/hooks/use-location';
 
@@ -87,6 +87,8 @@ export function CheckoutForm({
   const [placedOrder, setPlacedOrder] = useState<any | null>(null);
   const [createdSubscription, setCreatedSubscription] = useState<any | null>(null);
   const [countdown, setCountdown] = useState(4);
+  // The unpaid order of this checkout, reused on retry while the cart is unchanged.
+  const pendingOrderRef = useRef<{ signature: string; order: any } | null>(null);
 
   const isSubscriptionOrder = cart.items.some(
     (item) => item.subscription_type === 'weekly' || item.subscription_type === 'monthly'
@@ -130,6 +132,18 @@ export function CheckoutForm({
   // Celebration View (Tailored for Scheduled Subscriptions vs Instant Orders)
   if (placedOrder) {
     const isSub = isSubscriptionOrder || createdSubscription;
+    const planDiscount = subscriptionItem ? SUBSCRIPTION_DISCOUNT_PCT[subscriptionItem.subscription_type] ?? 0 : 0;
+    // The plan's real first delivery (set by the server), not a guess.
+    const firstDate: string | undefined =
+      createdSubscription?.deliveries?.[0]?.date || createdSubscription?.start_date;
+    const firstDeliveryLabel = firstDate
+      ? new Date(`${firstDate}T00:00:00Z`).toLocaleDateString('en-IN', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'UTC',
+        })
+      : 'As scheduled';
 
     return (
       <div className="fixed inset-0 z-50 bg-[#FDFCFB]/95 backdrop-blur-md overflow-y-auto flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
@@ -156,11 +170,15 @@ export function CheckoutForm({
               </span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
-              {isSub ? 'Tiffin Subscription Activated! 🎉' : 'Order Placed Successfully! 🎉'}
+              {isSub
+                ? createdSubscription?.status === 'active'
+                  ? 'Tiffin Subscription Activated! 🎉'
+                  : 'Tiffin Plan Booked! 🎉'
+                : 'Order Placed Successfully! 🎉'}
             </h2>
             <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
               {isSub
-                ? 'Your recurring meal plan is active. Fresh homely meals will be prepared and delivered on your selected days and time slot.'
+                ? 'Fresh homely meals will be prepared and delivered on your selected days and time slot.'
                 : 'Your home kitchen has received the order and is preparing fresh homemade food for you right now.'}
             </p>
           </div>
@@ -174,7 +192,7 @@ export function CheckoutForm({
                 </span>
                 <span className="font-extrabold text-gray-900 text-sm capitalize">
                   {isSub
-                    ? `${subscriptionItem?.subscription_type} Plan (${subscriptionItem?.subscription_type === 'weekly' ? '20% OFF' : '30% OFF'})`
+                    ? `${subscriptionItem?.subscription_type} Plan${planDiscount > 0 ? ` (${planDiscount}% OFF)` : ''}`
                     : `#${placedOrder.order_number || placedOrder.id?.slice(0, 8).toUpperCase()}`}
                 </span>
               </div>
@@ -185,7 +203,7 @@ export function CheckoutForm({
                 <span className="font-extrabold text-orange-600 text-sm flex items-center gap-1">
                   {isSub ? (
                     <>
-                      <Calendar className="w-3.5 h-3.5" /> Tomorrow ({subscriptionItem?.delivery_time || '12:30 PM'} • {getTimeOfDayInfo(subscriptionItem?.delivery_time || '12:30 PM').label})
+                      <Calendar className="w-3.5 h-3.5" /> {firstDeliveryLabel} ({subscriptionItem?.delivery_time || '12:30 PM'} • {getTimeOfDayInfo(subscriptionItem?.delivery_time || '12:30 PM').label})
                     </>
                   ) : (
                     <>
@@ -338,9 +356,10 @@ export function CheckoutForm({
       return;
     }
 
+    // A second click while a payment is open must not start another checkout.
+    if (isProcessing) return;
     setIsProcessing(true);
 
-    const vendorId = cart.vendor_id || (cart.items[0] as any)?.vendor_id;
     const isCash = paymentMethod === 'cash';
     const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const onlinePaymentsEnabled = !!rzpKey && rzpKey !== 'your_razorpay_key_id';
@@ -355,136 +374,123 @@ export function CheckoutForm({
       return;
     }
 
+    const orderRequest = {
+      items: cart.items.map((item) => ({
+        meal_id: item.meal_id,
+        quantity: item.quantity,
+        subscription_type: item.subscription_type,
+        delivery_days: item.delivery_days,
+        delivery_time: item.delivery_time,
+        // Same start date the cart priced with, so the server charges the same meal count.
+        ...(item.subscription_type !== 'one-time'
+          ? { plan_start_date: getItemPricing(item).planStartDate ?? undefined }
+          : {}),
+      })),
+      payment_method: paymentMethod,
+      delivery_address: selectedAddress,
+      delivery_instructions: deliveryInstructions || null,
+    };
+    const signature = JSON.stringify(orderRequest);
+
+    const finishSuccess = (order: any, title: string, description: string) => {
+      pendingOrderRef.current = null;
+      // The plan is created by the server together with the order.
+      if (order.subscription) setCreatedSubscription(order.subscription);
+      setPlacedOrder(order);
+      clearCart();
+      toast({ title, description });
+    };
+
     try {
-      // The server re-checks availability and computes every price and total.
-      const order = await orderService.createOrder({
-        items: cart.items.map((item) => ({
-          meal_id: item.meal_id,
-          quantity: item.quantity,
-          subscription_type: item.subscription_type,
-          delivery_days: item.delivery_days,
-          delivery_time: item.delivery_time,
-          // Same start date the cart priced with, so the server charges the same meal count.
-          ...(item.subscription_type !== 'one-time'
-            ? { plan_start_date: getItemPricing(item).planStartDate ?? undefined }
-            : {}),
-        })),
-        payment_method: paymentMethod,
-        delivery_address: selectedAddress,
-        delivery_instructions: deliveryInstructions || null,
-      });
-
-      const createSubscriptionIfApplicable = async () => {
-        if (!isSubscriptionOrder || !subscriptionItem) return null;
-        try {
-          const startDate = new Date();
-          startDate.setDate(startDate.getDate() + 1);
-          const startDateStr = startDate.toISOString().split('T')[0];
-
-          const endDate = new Date(startDate);
-          if (subscriptionItem.subscription_type === 'weekly') {
-            endDate.setDate(endDate.getDate() + 7);
-          } else {
-            endDate.setDate(endDate.getDate() + 30);
-          }
-          const endDateStr = endDate.toISOString().split('T')[0];
-
-          const subRes = await fetch('/api/subscriptions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              vendor_id: vendorId,
-              plan_type: subscriptionItem.subscription_type,
-              meal_type: 'lunch',
-              start_date: startDateStr,
-              end_date: endDateStr,
-              delivery_days: subscriptionItem.delivery_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-              delivery_time: subscriptionItem.delivery_time || '12:30 PM',
-              address: selectedAddress,
-              order_id: order.id,
-              auto_renew: false,
-            }),
-          });
-          if (subRes.ok) {
-            const subData = await subRes.json();
-            setCreatedSubscription(subData);
-            return subData;
-          }
-        } catch (subErr) {
-          console.warn('Subscription auto-creation error:', subErr);
-        }
-        return null;
-      };
+      // Retrying the same checkout reuses the unpaid order instead of creating
+      // another one (which used to leave orphan orders and allow paying twice).
+      const reusable = !isCash && pendingOrderRef.current?.signature === signature;
+      let order: any = reusable ? pendingOrderRef.current!.order : null;
+      if (!order) {
+        // The server re-checks availability and computes every price and total.
+        order = await orderService.createOrder(orderRequest);
+      }
 
       if (isCash) {
-        await createSubscriptionIfApplicable();
-        setPlacedOrder(order);
-        clearCart();
-        toast({
-          title: isSubscriptionOrder ? 'Subscription Activated! 🎉' : 'Order Placed (Cash on Delivery) 🎉',
-          description: isSubscriptionOrder
-            ? 'Your scheduled meal subscription has been activated.'
-            : 'Your home-cooked meal is being prepared by the chef.',
-        });
-      } else {
-        // Razorpay payment flow (amount is taken from the order on the server)
-        const paymentOrder = await paymentService.createRazorpayOrder({
-          amount: order.total,
-          orderId: order.id,
-        });
-
-        const options = {
-          key: rzpKey,
-          amount: paymentOrder.amount,
-          currency: paymentOrder.currency,
-          name: 'Rasan',
-          description: 'Authentic Home-Cooked Meal',
-          order_id: paymentOrder.id,
-          handler: async (response: any) => {
-            try {
-              setIsProcessing(true);
-              await paymentService.verifyPayment(
-                {
-                  paymentId: response.razorpay_payment_id,
-                  orderId: order.id,
-                  razorpayOrderId: response.razorpay_order_id,
-                  signature: response.razorpay_signature,
-                },
-                'razorpay'
-              );
-
-              await createSubscriptionIfApplicable();
-              setPlacedOrder(order);
-              clearCart();
-              toast({
-                title: isSubscriptionOrder ? 'Subscription Activated! 🎉' : 'Payment Successful 🎉',
-                description: isSubscriptionOrder
-                  ? 'Your scheduled meal subscription has been activated.'
-                  : 'Your order has been confirmed and assigned to the home chef.',
-              });
-            } catch (err: any) {
-              toast({
-                title: 'Verification Failed',
-                description: err.message || 'Could not verify payment',
-                variant: 'destructive',
-              });
-            } finally {
-              setIsProcessing(false);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              setIsProcessing(false);
-            },
-          },
-          theme: {
-            color: '#EA580C',
-          },
-        };
-
-        const rzp = new (window as any).Razorpay(options);
-        rzp.open();
+        finishSuccess(
+          order,
+          isSubscriptionOrder ? 'Meal Plan Booked 🎉' : 'Order Placed (Cash on Delivery) 🎉',
+          isSubscriptionOrder
+            ? 'Your meal plan is booked. Pay the delivery partner in cash.'
+            : 'Your home-cooked meal is being prepared by the chef.'
+        );
+        setIsProcessing(false);
+        return;
       }
+
+      pendingOrderRef.current = { signature, order };
+
+      let paymentOrder;
+      try {
+        // The amount is taken from the order on the server.
+        paymentOrder = await paymentService.createRazorpayOrder({ amount: order.total, orderId: order.id });
+      } catch (err) {
+        // The saved order is no longer payable (expired / cancelled): start fresh once.
+        if (!reusable) throw err;
+        pendingOrderRef.current = null;
+        order = await orderService.createOrder(orderRequest);
+        pendingOrderRef.current = { signature, order };
+        paymentOrder = await paymentService.createRazorpayOrder({ amount: order.total, orderId: order.id });
+      }
+
+      const paidOrder = order;
+      const options = {
+        key: rzpKey,
+        amount: paymentOrder.amount,
+        currency: paymentOrder.currency,
+        name: 'Rasan',
+        description: isSubscriptionOrder ? 'Home-cooked meal plan' : 'Authentic Home-Cooked Meal',
+        order_id: paymentOrder.id,
+        handler: async (response: any) => {
+          setIsProcessing(true);
+          try {
+            await paymentService.verifyPayment(
+              {
+                paymentId: response.razorpay_payment_id,
+                orderId: paidOrder.id,
+                razorpayOrderId: response.razorpay_order_id,
+                signature: response.razorpay_signature,
+              },
+              'razorpay'
+            );
+            finishSuccess(
+              paidOrder,
+              isSubscriptionOrder ? 'Meal Plan Activated 🎉' : 'Payment Successful 🎉',
+              isSubscriptionOrder
+                ? 'Your meal plan is active. Deliveries start on the date you chose.'
+                : 'Your order has been confirmed and sent to the home chef.'
+            );
+          } catch (err: any) {
+            toast({
+              title: 'We could not confirm your payment yet',
+              description: `${err.message || 'Verification failed.'} If money was deducted, the order is confirmed automatically within a few minutes or the amount is refunded. Check My Orders before paying again.`,
+              variant: 'destructive',
+            });
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setIsProcessing(false),
+        },
+        theme: { color: '#EA580C' },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on?.('payment.failed', (resp: any) => {
+        toast({
+          title: 'Payment Failed',
+          description: resp?.error?.description || 'The payment did not go through. You can try again.',
+          variant: 'destructive',
+        });
+      });
+      rzp.open();
+      // isProcessing stays true until the modal is dismissed or the payment is handled.
     } catch (error: any) {
       console.error('Order placement error:', error);
       toast({
@@ -492,7 +498,6 @@ export function CheckoutForm({
         description: error?.message || 'Could not place order. Please try again.',
         variant: 'destructive',
       });
-    } finally {
       setIsProcessing(false);
     }
   };

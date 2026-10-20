@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/utils/safe-redirect";
 import { ChefHat, Bike, User, ShieldCheck, Upload, X, CheckCircle2, ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
@@ -122,8 +123,9 @@ export function RegisterForm() {
           setLoading(false); return;
         }
         const redirectTo = searchParams.get("redirectTo");
-        if (role === "customer" && redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")) {
-          router.push(redirectTo);
+        const safeTarget = safeRedirectPath(redirectTo, "");
+        if (role === "customer" && safeTarget) {
+          router.push(safeTarget);
         } else {
           switch (role) {
             case "customer": router.push("/dashboard"); break;

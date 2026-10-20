@@ -36,7 +36,7 @@ export async function resolveApplicantAccount(input: ApplicantInput): Promise<Ap
   if (input.authUser) {
     const { data: profile } = await serviceSupabase
       .from('profiles')
-      .select('role')
+      .select('role, is_active, is_verified')
       .eq('id', input.authUser.id)
       .maybeSingle();
 
@@ -46,6 +46,26 @@ export async function resolveApplicantAccount(input: ApplicantInput): Promise<Ap
         response: NextResponse.json(
           { error: 'Admin accounts cannot apply as partners.' },
           { status: 400 }
+        ),
+      };
+    }
+    if (profile?.is_active === false) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: 'Your account is suspended.' }, { status: 403 }),
+      };
+    }
+    // A working partner can't switch to the other partner role by re-applying:
+    // that would bounce them out of their portal and around the review queue.
+    const otherPartnerRole = input.role === 'vendor' ? 'delivery' : 'vendor';
+    if (profile?.role === otherPartnerRole) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: `This account is registered as a ${otherPartnerRole === 'vendor' ? 'home chef' : 'delivery partner'}. Use a different account, or contact support to switch roles.`,
+          },
+          { status: 409 }
         ),
       };
     }

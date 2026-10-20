@@ -34,7 +34,7 @@ export default async function OperationalManifestPage() {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  const vendorName = vendor?.business_name || "Anita's Home Kitchen";
+  const vendorName = vendor?.business_name || 'Your Kitchen';
   const vendorId = vendor?.id;
 
   // Get orders for this vendor (or all latest orders in demo mode)

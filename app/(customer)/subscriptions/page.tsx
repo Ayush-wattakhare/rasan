@@ -1,15 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import SubscriptionsPageClient from '@/components/subscriptions/subscriptions-page-client';
-import {
-  datesBetween,
-  defaultPlanStart,
-  isValidPlanStart,
-  normalizeDeliveryDays,
-  planDates,
-  planEndDate,
-  type SchedulablePlan,
-} from '@/lib/pricing/plan-schedule';
+import { datesBetween } from '@/lib/pricing/plan-schedule';
+import { createSubscriptionForOrder } from '@/lib/subscriptions/from-order';
 import { istToday } from '@/lib/utils/ist-date';
 import { getDeliveryLocation } from '@/lib/location/server-location';
 import { getServiceArea } from '@/lib/location/nearby';
@@ -65,31 +58,16 @@ export default async function SubscriptionsPage() {
       const isPaid = order.payment_status === 'paid';
       const cashConfirmed = order.payment_method === 'cash' && order.status !== 'pending';
       if (subItem && (isPaid || cashConfirmed)) {
-        const plan = subItem.subscription_type as SchedulablePlan;
-        // The plan that was paid for: its start date (if still ahead) and its days.
-        const startDate = isValidPlanStart(subItem.plan_start_date) ? subItem.plan_start_date : defaultPlanStart();
-        const days = normalizeDeliveryDays(subItem.delivery_days);
-        const dates = planDates(plan, startDate, days);
-        if (dates.length === 0) continue;
+        // Same rules and price as checkout (shared helper); a start date that
+        // has passed moves to the next valid day.
+        const created = await createSubscriptionForOrder(order as any, {
+          address: (order.delivery_address as unknown as Record<string, unknown>) || {},
+          rescheduleIfPast: true,
+        });
+        if (!created.ok) continue;
 
         const { data: newSub } = await serviceClient
           .from('subscriptions')
-          .insert({
-            customer_id: user.id,
-            vendor_id: order.vendor_id,
-            plan_type: plan,
-            meal_type: (subItem.delivery_time || '').toLowerCase().includes('dinner') ? 'dinner' : 'lunch',
-            delivery_time: subItem.delivery_time || '12:30 PM',
-            delivery_days: days,
-            status: 'active',
-            order_id: order.id,
-            payment_status: isPaid ? 'paid' : 'pending',
-            price: order.total,
-            start_date: startDate,
-            end_date: planEndDate(plan, startDate),
-            address: order.delivery_address,
-            deliveries: toDeliveries(dates),
-          } as any)
           .select(
             `
             *,
@@ -101,6 +79,7 @@ export default async function SubscriptionsPage() {
             )
           `
           )
+          .eq('id', created.subscription.id)
           .single();
 
         if (newSub) {

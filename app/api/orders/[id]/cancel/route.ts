@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/guards';
-import { PaymentStatus } from '@/types';
+import { refundOrderPayment } from '@/lib/payments/refunds';
+import { releaseOrderStock } from '@/lib/orders/stock';
+import { cancellationPolicy } from '@/lib/orders/cancellation';
+import { cancelPlanForOrder } from '@/lib/subscriptions/from-order';
 
 export async function POST(
   request: NextRequest,
@@ -15,10 +18,9 @@ export async function POST(
 
     const serviceClient = createServiceClient();
 
-    // Fetch order details matching database schema (customer_id)
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
-      .select('id, customer_id, status, payment_status, total, created_at')
+      .select('id, order_number, customer_id, status, payment_status, payment_method, total, created_at')
       .eq('id', orderId)
       .single();
 
@@ -55,38 +57,17 @@ export async function POST(
       );
     }
 
-    // Refund policy by status. Only money actually received can be refunded.
-    const wasPaid = order.payment_status === 'paid';
-    let refundPercentage = 0;
-    let policyReason = '';
-
-    if (['pending', 'confirmed'].includes(order.status)) {
-      refundPercentage = 100;
-      policyReason = 'Full 100% refund applied (Cancelled before kitchen preparation).';
-    } else if (order.status === 'preparing') {
-      refundPercentage = 50;
-      policyReason = '50% partial refund applied (Food preparation already in progress).';
-    } else if (['out_for_delivery', 'picked_up', 'ready'].includes(order.status)) {
-      refundPercentage = 0;
-      policyReason = 'Non-refundable (Order is ready or out for delivery).';
-    }
-
-    if (!wasPaid) {
-      refundPercentage = 0;
-      policyReason = 'No payment was collected for this order.';
-    }
-
-    const paymentStatus: PaymentStatus =
-      wasPaid && refundPercentage > 0 ? 'refunded' : (order.payment_status as PaymentStatus);
-    const refundAmount = (order.total * refundPercentage) / 100;
+    // Only money actually received online can be refunded.
+    const wasPaidOnline = order.payment_status === 'paid' && order.payment_method !== 'cash';
+    const policy = cancellationPolicy(order.status as string);
+    const refundPercentage = wasPaidOnline ? policy.percentage : 0;
+    const policyReason = wasPaidOnline ? policy.reason : 'No online payment was collected for this order.';
+    const requestedRefund = Math.round(Number(order.total) * refundPercentage) / 100;
 
     // Conditional on the current status so a concurrent transition isn't overwritten.
     const { data: cancelled, error: updateError } = await serviceClient
       .from('orders')
-      .update({
-        status: 'cancelled',
-        payment_status: paymentStatus,
-      })
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', orderId)
       .eq('status', order.status)
       .select('id')
@@ -103,13 +84,44 @@ export async function POST(
       );
     }
 
-    // Send customer notification alert
+    await releaseOrderStock(orderId);
+    // The plan bought with this order is cancelled with it.
+    await cancelPlanForOrder(orderId);
+
+    // Real refund through Razorpay (idempotent per order).
+    let refundAmount = 0;
+    let refundState: 'none' | 'initiated' | 'queued' = 'none';
+    if (requestedRefund > 0) {
+      const refund = await refundOrderPayment({
+        orderId,
+        amount: requestedRefund,
+        reason: `Customer cancellation: ${policyReason}`,
+        referenceId: `CANCEL-${orderId}`,
+      });
+      if (refund.ok) {
+        refundAmount = refund.amount;
+        refundState = 'initiated';
+      } else if (refund.queued) {
+        refundAmount = requestedRefund;
+        refundState = 'queued';
+      } else {
+        console.error(`Cancel refund for ${orderId} not issued:`, refund.message);
+      }
+    }
+
+    const refundLine =
+      refundState === 'initiated'
+        ? `A refund of ₹${refundAmount.toFixed(2)} has been initiated to your original payment method. It usually reaches you in 5–7 working days.`
+        : refundState === 'queued'
+          ? `Your refund of ₹${refundAmount.toFixed(2)} is being reviewed by our team and will be processed shortly.`
+          : '';
+
     try {
       await serviceClient.from('notifications').insert({
         user_id: order.customer_id,
         type: 'order',
-        title: refundAmount > 0 ? 'Order Cancelled & Refund Processed' : 'Order Cancelled',
-        message: `Order #${orderId.slice(0, 8)} has been cancelled. ${policyReason} Refund Amount: ₹${refundAmount.toFixed(2)}`,
+        title: refundState === 'none' ? 'Order Cancelled' : 'Order Cancelled · Refund Initiated',
+        message: `Order #${order.order_number || orderId.slice(0, 8)} has been cancelled. ${policyReason} ${refundLine}`.trim(),
         is_read: false,
       });
     } catch {
@@ -124,15 +136,12 @@ export async function POST(
         previousStatus: order.status,
         refundPercentage,
         refundAmount,
-        paymentStatus,
+        refundState,
         policyReason,
       },
     });
   } catch (error: any) {
     console.error('Cancellation error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

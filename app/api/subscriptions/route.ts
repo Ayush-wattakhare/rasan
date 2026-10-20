@@ -17,6 +17,7 @@ import { coordsFromAddress } from '@/lib/utils/geo';
 import { deliveryRange } from '@/lib/location/delivery-range';
 import { getDeliveryLocation } from '@/lib/location/server-location';
 import { MAX_DELIVERY_RADIUS_KM } from '@/lib/utils/constants';
+import { createSubscriptionForOrder } from '@/lib/subscriptions/from-order';
 import { NextResponse } from 'next/server';
 
 function buildDeliveries(dates: string[]) {
@@ -55,64 +56,33 @@ export async function POST(request: Request) {
     let days: string[];
     let deliveryTime: string;
     let mealType: string;
-    let paymentStatus: 'paid' | 'pending' = 'pending';
-    let status: 'active' | 'pending_payment' = 'pending_payment';
+    // Standalone plans wait for payment.
+    const paymentStatus = 'pending' as const;
+    const status = 'pending_payment' as const;
 
     if (order_id) {
+      // Plans bought at checkout are created by POST /api/orders; this path is
+      // kept for older clients and is idempotent (returns the existing plan).
       const { data: order } = await serviceClient
         .from('orders')
-        .select('id, customer_id, vendor_id, items, total, status, payment_status, payment_method')
+        .select('id, customer_id, vendor_id, items, status, payment_status, payment_method')
         .eq('id', order_id)
         .eq('customer_id', user.id)
         .maybeSingle();
-
-      if (!order || order.status === 'cancelled') {
+      if (!order) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
-
-      const subItem = (order.items as any[] | null)?.find(
-        (i) => i?.subscription_type === 'weekly' || i?.subscription_type === 'monthly'
-      );
-      if (!subItem) {
-        return NextResponse.json({ error: 'Order has no subscription plan' }, { status: 400 });
+      const result = await createSubscriptionForOrder(order as any, {
+        address,
+        autoRenew: auto_renew === true,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
       }
+      return NextResponse.json(result.subscription, { status: result.created ? 201 : 200 });
+    }
 
-      planType = subItem.subscription_type;
-      vendorId = order.vendor_id as string;
-      price = Number(order.total);
-      // The plan the customer paid for, not what the browser sends now.
-      days = normalizeDeliveryDays(subItem.delivery_days);
-      deliveryTime = typeof subItem.delivery_time === 'string' && subItem.delivery_time
-        ? subItem.delivery_time.slice(0, 16)
-        : '12:30 PM';
-      // Older orders (before plan_start_date existed) fall back to a validated body date.
-      startDate = subItem.plan_start_date || body?.start_date;
-      if (!isValidPlanStart(startDate) && !subItem.plan_start_date) {
-        return NextResponse.json({ error: 'Invalid start date' }, { status: 400 });
-      }
-
-      const { data: meal } = await serviceClient
-        .from('meals')
-        .select('meal_type')
-        .eq('id', subItem.meal_id)
-        .maybeSingle();
-      mealType = (SUBSCRIPTION_MEAL_TYPES as readonly string[]).includes(meal?.meal_type as string)
-        ? (meal!.meal_type as string)
-        : 'lunch';
-
-      const dates = planDates(planType, startDate, days);
-      if (typeof subItem.meal_count === 'number' && subItem.meal_count !== dates.length) {
-        return NextResponse.json(
-          { error: 'Plan schedule does not match the order. Please contact support.' },
-          { status: 409 }
-        );
-      }
-
-      paymentStatus = order.payment_status === 'paid' ? 'paid' : 'pending';
-      // Cash plans are paid at the door; they start once the kitchen has the order.
-      const cashConfirmed = order.payment_method === 'cash' && order.status !== 'pending';
-      status = paymentStatus === 'paid' || cashConfirmed ? 'active' : 'pending_payment';
-    } else {
+    {
       if (!PLAN_TYPES.includes(body?.plan_type) || typeof body?.vendor_id !== 'string') {
         return NextResponse.json({ error: 'Missing or invalid fields' }, { status: 400 });
       }

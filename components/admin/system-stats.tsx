@@ -3,7 +3,13 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils/format';
 import { Users, ShoppingBag, Landmark, Repeat, Sparkles, ArrowUpRight, Truck, ChefHat } from 'lucide-react';
-import { RASAN_COMMISSION_RATE, VENDOR_PAYOUT_RATE, RASAN_COMMISSION_PERCENTAGE } from '@/lib/utils/constants';
+import {
+  RASAN_COMMISSION_RATE,
+  VENDOR_PAYOUT_RATE,
+  RASAN_COMMISSION_PERCENTAGE,
+  MAX_DELIVERY_RADIUS_KM,
+} from '@/lib/utils/constants';
+import { DELIVERY_FEE, PLATFORM_FEE } from '@/lib/pricing/order-pricing';
 
 interface SystemStatsProps {
   stats: {
@@ -46,7 +52,7 @@ export default function SystemStats({ stats }: SystemStatsProps) {
                 {formatCurrency(rasanEarnings)}
               </div>
               <p className="text-[0.6rem] font-bold text-gray-400 pt-1 flex items-center gap-1.5">
-                <span>Collected from {RASAN_COMMISSION_PERCENTAGE}% meal price commission</span>
+                <span>{RASAN_COMMISSION_PERCENTAGE}% commission on food + ₹{PLATFORM_FEE} platform fee per order (paid / delivered, net of refunds)</span>
               </p>
             </div>
           </CardContent>
@@ -90,18 +96,17 @@ export default function SystemStats({ stats }: SystemStatsProps) {
               </span>
             </div>
 
+            {/* What checkout actually charges (lib/pricing/order-pricing.ts). */}
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between bg-green-50 p-2.5 rounded-xl border border-green-100">
-                <span className="text-xs font-black text-green-900">Under 7 KM</span>
+                <span className="text-xs font-black text-green-900">Delivery (within {MAX_DELIVERY_RADIUS_KM} km)</span>
                 <span className="text-xs font-black text-green-700 bg-green-200/60 px-2 py-0.5 rounded-lg uppercase">
-                  FREE (₹0)
+                  {DELIVERY_FEE === 0 ? 'FREE (₹0)' : `₹${DELIVERY_FEE}`}
                 </span>
               </div>
               <div className="flex items-center justify-between bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                <span className="text-xs font-black text-gray-800">Above 7 KM</span>
-                <span className="text-xs font-black text-gray-700 font-mono">
-                  ₹25 Base + ₹10/KM
-                </span>
+                <span className="text-xs font-black text-gray-800">Platform fee per order</span>
+                <span className="text-xs font-black text-gray-700 font-mono">₹{PLATFORM_FEE}</span>
               </div>
             </div>
           </CardContent>

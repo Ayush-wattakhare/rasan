@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/guards';
+import { getItemPricing } from '@/lib/pricing/order-pricing';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole('vendor');
@@ -57,7 +58,14 @@ export async function GET(request: NextRequest) {
               status: 'active',
               start_date: order.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
               end_date: new Date(Date.now() + (item.subscription_type === 'weekly' ? 7 : 30) * 86400000).toISOString().split('T')[0],
-              price: order.total,
+              // The plan line's price, not the whole order (fees, other items).
+              price: getItemPricing({
+                price: Number(item.price),
+                quantity: Number(item.quantity) || 1,
+                subscription_type: item.subscription_type,
+                delivery_days: item.delivery_days,
+                plan_start_date: item.plan_start_date,
+              }).finalPrice,
             });
           }
         });

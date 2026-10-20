@@ -127,7 +127,7 @@ export default function DeliveryDashboardMain({
     const map: Record<string, any[]> = {};
 
     for (const order of availableOrders) {
-      const vendorName = order.vendors?.business_name || "Anita's Home Kitchen";
+      const vendorName = order.vendors?.business_name || 'Home Kitchen';
       const area =
         order.delivery_address?.city ||
         order.delivery_address?.street?.split(',').pop()?.trim() ||
@@ -489,7 +489,7 @@ export default function DeliveryDashboardMain({
 
             <Card className="border-none shadow-xl bg-white rounded-3xl p-4 sm:p-6">
               <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-widest mb-1">Trust Rating</div>
-              <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tighter italic truncate">★ {deliveryPartner.rating || 4.9}</div>
+              <div className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tighter italic truncate">{Number(deliveryPartner.rating) > 0 ? `★ ${Number(deliveryPartner.rating).toFixed(1)}` : 'New'}</div>
               <div className="text-[0.6rem] font-bold text-gray-400 uppercase mt-1">Top Tier Rider</div>
             </Card>
 
@@ -523,7 +523,7 @@ export default function DeliveryDashboardMain({
               {activeDeliveries.length > 0 ? (
                 <div className="space-y-6">
                   {activeDeliveries.map((order) => {
-                    const vendorName = order.vendors?.business_name || "Anita's Home Kitchen";
+                    const vendorName = order.vendors?.business_name || 'Home Kitchen';
                     const vendorAddress = order.vendors?.address || 'Pimpri Colony, Pimpri-Chinchwad, Pune';
                     const customerAddress = order.delivery_address?.street || 'Rahatani, Pimpri-Chinchwad';
                     const customerName = order.profiles?.name || 'Customer';
@@ -737,7 +737,7 @@ export default function DeliveryDashboardMain({
 
                   {/* Individual Available Order Cards */}
                   {availableOrders.map((order) => {
-                    const vendorName = order.vendors?.business_name || "Anita's Home Kitchen";
+                    const vendorName = order.vendors?.business_name || 'Home Kitchen';
                     const dropStreet = order.delivery_address?.street || 'Pimpri-Chinchwad';
                     const orderNum = order.order_number || (order.id ? order.id.slice(0, 8) : 'ORD-01');
 

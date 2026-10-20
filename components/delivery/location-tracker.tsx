@@ -99,19 +99,14 @@ export default function LocationTracker({
   const pushLocationToServer = useCallback(
     async (lat: number, lng: number, accuracy: number = 10) => {
       try {
-        await Promise.allSettled([
-          fetch(`/api/delivery/update-location`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ deliveryPartnerId, latitude: lat, longitude: lng }),
-          }),
-          fetch(`/api/delivery-partners/${deliveryPartnerId}/location`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat, lng }),
-          }),
-        ]);
-        setLastUpdate(new Date());
+        // One write per fix: this endpoint stores the point and notifies the
+        // customers tracking this rider.
+        const res = await fetch(`/api/delivery-partners/${deliveryPartnerId}/location`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        });
+        if (res.ok) setLastUpdate(new Date());
       } catch (err) {
         console.warn('Location broadcast warning:', err);
       }

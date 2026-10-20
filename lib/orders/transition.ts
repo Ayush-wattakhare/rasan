@@ -1,7 +1,10 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import { canTransition, normalizeOrderStatus, type OrderActor } from '@/lib/utils/order-transitions';
 import { verifyHandoverCode } from '@/lib/utils/delivery-otp-server';
-import { rateLimit } from '@/lib/utils/rate-limit';
+import { rateLimitShared } from '@/lib/utils/rate-limit';
+import { releaseOrderStock } from '@/lib/orders/stock';
+import { refundOrderPayment } from '@/lib/payments/refunds';
+import { cancelPlanForOrder } from '@/lib/subscriptions/from-order';
 import {
   notifyKitchenCooking,
   notifyOutForDelivery,
@@ -11,6 +14,9 @@ import type { OrderStatus, UserRole } from '@/types';
 
 /** Minimum a rider earns per delivery when the order carries no delivery fee. */
 const MIN_PARTNER_FEE = 35;
+
+/** Orders one rider may carry at the same time. */
+export const MAX_ACTIVE_DELIVERIES = 3;
 
 const TRACKING_MESSAGES: Partial<Record<OrderStatus, string>> = {
   confirmed: 'Order confirmed by kitchen.',
@@ -38,6 +44,11 @@ const CUSTOMER_NOTIFICATIONS: Partial<Record<OrderStatus, { title: string; messa
   delivered: {
     title: '✨ Order Delivered!',
     message: 'Your delicious home-cooked meal has arrived. Enjoy!',
+  },
+  cancelled: {
+    title: 'Order Cancelled',
+    message:
+      'Sorry, your order could not be fulfilled and was cancelled. If you paid online, a full refund has been sent to your original payment method.',
   },
 };
 
@@ -134,7 +145,7 @@ export async function transitionOrder(params: {
       return failure(400, 'Customer 4-digit Delivery PIN is required to complete handover.');
     }
     // A 4-digit PIN has only 9000 values: cap attempts per rider and order.
-    const attempts = rateLimit(`delivery-otp:${params.userId}:${order.id}`, {
+    const attempts = await rateLimitShared(`delivery-otp:${params.userId}:${order.id}`, {
       interval: 15 * 60 * 1000,
       maxRequests: 5,
     });
@@ -164,23 +175,50 @@ export async function transitionOrder(params: {
     updateData.actual_delivery_time = nowIso;
     // Cash is collected at the door; online orders are already paid.
     if (!isOnlinePayment) updateData.payment_status = 'paid';
+    // What the rider earns is stored apart from what the customer paid
+    // (orders.rider_fee, migration 008), so order totals stay consistent.
     const fee = Number(order.delivery_fee) || 0;
-    updateData.delivery_fee = fee > 0 ? fee : MIN_PARTNER_FEE;
+    updateData.rider_fee = fee > 0 ? fee : MIN_PARTNER_FEE;
   }
 
-  const { data: updated, error } = await serviceClient
-    .from('orders')
-    .update(updateData)
-    .eq('id', order.id)
-    .eq('status', from)
-    .select()
-    .maybeSingle();
+  const runUpdate = (data: Record<string, unknown>) =>
+    serviceClient
+      .from('orders')
+      .update(data as any)
+      .eq('id', order.id)
+      .eq('status', from)
+      .select()
+      .maybeSingle();
+
+  let { data: updated, error } = await runUpdate(updateData);
+  if (error && 'rider_fee' in updateData && /rider_fee/.test(error.message || '')) {
+    // Migration 008 not applied yet: fall back to the old behaviour.
+    const { rider_fee, ...rest } = updateData;
+    ({ data: updated, error } = await runUpdate({ ...rest, delivery_fee: rider_fee }));
+  }
 
   if (error) {
     console.error('Order transition error:', error);
     return failure(500, 'Failed to update order');
   }
   if (!updated) return failure(409, 'Order was updated by someone else. Please refresh.');
+
+  if (to === 'cancelled') {
+    // The kitchen / admin cancelled: stock goes back and the customer gets a full refund.
+    await releaseOrderStock(order.id);
+    await cancelPlanForOrder(order.id);
+    if (isOnlinePayment && order.payment_status === 'paid') {
+      const refund = await refundOrderPayment({
+        orderId: order.id,
+        amount: Number(order.total),
+        reason: `Order cancelled by ${params.actor === 'vendor' ? 'the kitchen' : params.actor}`,
+        referenceId: `${params.actor.toUpperCase()}-CANCEL-${order.id}`,
+      });
+      if (!refund.ok && refund.reason !== 'not-paid') {
+        console.error(`Refund after ${params.actor} cancellation of ${order.id} failed:`, refund.message);
+      }
+    }
+  }
 
   const notification = CUSTOMER_NOTIFICATIONS[to];
   if (notification && order.customer_id) {
@@ -319,12 +357,23 @@ export async function claimOrderForPartner(params: {
 
   const { data: partner } = await serviceClient
     .from('delivery_partners')
-    .select('id, is_verified')
+    .select('id, is_verified, is_online')
     .eq('user_id', params.userId)
     .maybeSingle();
 
   if (!partner) return failure(404, 'Delivery partner record not found');
   if (!partner.is_verified) return failure(403, 'Your rider account is awaiting admin verification');
+  if (!partner.is_online) return failure(409, 'Go online to accept orders');
+
+  // One rider can't hoard orders: cap how many are in flight at once.
+  const { count: active } = await serviceClient
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('delivery_partner_id', partner.id)
+    .in('status', ['picked_up', 'out_for_delivery']);
+  if ((active ?? 0) >= MAX_ACTIVE_DELIVERIES) {
+    return failure(409, `You already have ${MAX_ACTIVE_DELIVERIES} active deliveries. Finish one before accepting another.`);
+  }
 
   const { data: order } = await serviceClient
     .from('orders')
@@ -353,7 +402,7 @@ export async function claimOrderForPartner(params: {
         {
           status: 'picked_up',
           timestamp: nowIso,
-          message: 'Delivery partner has accepted the order and picked it up from the kitchen.',
+          message: 'A delivery partner accepted your order and is collecting it from the kitchen.',
         },
       ] as any,
     })
@@ -374,8 +423,8 @@ export async function claimOrderForPartner(params: {
       await serviceClient.from('notifications').insert({
         user_id: order.customer_id,
         type: 'delivery',
-        title: '🛵 Order Assigned to Rider!',
-        message: 'Your tiffin has been picked up by a rider and is heading to your location.',
+        title: '🛵 Rider Assigned!',
+        message: 'A delivery partner has accepted your tiffin and is collecting it from the kitchen.',
         is_read: false,
       });
     } catch {

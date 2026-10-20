@@ -15,7 +15,6 @@ import { devToolsEnabled } from '@/lib/dev-tools';
 const PUBLIC_PREFIXES = [
   '/about',
   '/contact',
-  '/faq',
   '/blog',
   '/careers',
   '/privacy-policy',
@@ -146,13 +145,29 @@ export async function updateSession(request: NextRequest) {
     const isAuthPage = pathname === '/login' || pathname === '/register';
     if (user && (isProtectedRoute || isAuthPage)) {
       userRole = roleFromAppMetadata(user);
-      if (!userRole) {
+      // The profile is read on protected pages anyway: suspension lives there.
+      const needsProfile = isProtectedRoute || !userRole;
+      if (needsProfile) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, is_active')
           .eq('id', user.id)
           .maybeSingle();
-        userRole = isUserRole(profile?.role) ? profile.role : null;
+        if (!userRole) userRole = isUserRole(profile?.role) ? profile.role : null;
+
+        // Suspended accounts lose every portal, not just the API routes.
+        if (isProtectedRoute && profile && (profile as { is_active?: boolean | null }).is_active === false) {
+          try {
+            await supabase.auth.signOut();
+          } catch {
+            // Cookies are cleared below regardless.
+          }
+          const target = request.nextUrl.clone();
+          target.pathname = '/login';
+          target.search = '';
+          target.searchParams.set('error', 'Your account has been suspended. Please contact support.');
+          return redirectWithCookies(target);
+        }
       }
     }
 

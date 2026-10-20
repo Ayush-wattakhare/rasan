@@ -30,7 +30,7 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
     },
     {
       label: 'CSAT RATING',
-      value: stats.averageRating.toFixed(1),
+      value: stats.averageRating > 0 ? stats.averageRating.toFixed(1) : 'New',
       sub: 'Community Sentiment',
       icon: Star,
       color: 'bg-orange-600'

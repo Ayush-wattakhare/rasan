@@ -89,13 +89,6 @@ export default function VendorFilters({ cuisineTypes }: VendorFiltersProps) {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-50">
-           <div className="p-4 rounded-3xl bg-orange-50/50 border border-orange-100/50">
-              <p className="text-[0.65rem] font-black text-orange-600 uppercase tracking-[0.2em] mb-1">Coming Soon</p>
-              <h5 className="text-sm font-bold text-gray-900 leading-tight">Live Kitchen Stream</h5>
-              <p className="text-[0.65rem] text-gray-500 mt-1">Watch your meal being prepared fresh!</p>
-           </div>
-        </div>
       </CardContent>
     </Card>
   );
